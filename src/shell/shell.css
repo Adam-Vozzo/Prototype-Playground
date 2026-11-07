@@ -1,0 +1,177 @@
+/* Global shell styles. Prototype styles live with the prototype and are
+   injected on mount via useStyles() so they never leak between prototypes. */
+
+:root {
+  --bg: #0d0e12;
+  --surface: #17181f;
+  --surface-2: #20222b;
+  --border: #2c2f3a;
+  --text: #ecedf2;
+  --muted: #9a9db0;
+  --brand: #8b7bff;
+  --bar-h: 44px;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #app { margin: 0; height: 100%; }
+[hidden] { display: none !important; }
+a { color: inherit; }
+
+.btn {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--brand); }
+
+/* ---------- Library ---------- */
+
+.home {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 56px 24px 80px;
+  min-height: 100%;
+}
+.home-header h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+.home-header p { color: var(--muted); margin: 0 0 24px; }
+.home-search {
+  width: 100%;
+  max-width: 360px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  outline: none;
+}
+.home-search:focus { border-color: var(--brand); }
+.home-notice {
+  margin: 24px 0 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #3a1d24;
+  border: 1px solid #6b2a37;
+}
+.home-empty { color: var(--muted); }
+
+.home-grid {
+  list-style: none;
+  padding: 0;
+  margin: 32px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  --accent: var(--brand);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 20px;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--accent);
+}
+.card:hover, .card:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  outline: none;
+}
+.card-icon { font-size: 30px; line-height: 1; }
+.card-title { font-weight: 650; font-size: 17px; }
+.card-desc { color: var(--muted); font-size: 14px; line-height: 1.45; flex: 1; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* ---------- Prototype host ---------- */
+
+.host {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.host-bar {
+  flex: none;
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  z-index: 10;
+}
+.host-back {
+  text-decoration: none;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.host-back:hover { color: var(--text); background: var(--surface-2); }
+.host-title { font-weight: 600; }
+
+/* Prototypes fill the stage. It is a positioned box so they can use
+   absolute layout or a full-size canvas. */
+.host-stage {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.host-status {
+  position: absolute;
+  inset: var(--bar-h) 0 0 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.host-status.is-error { pointer-events: auto; color: var(--text); }
+.host-status code { color: var(--muted); font-size: 12px; max-width: 60ch; text-align: center; }
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--brand);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
