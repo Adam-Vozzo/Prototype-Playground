@@ -80,6 +80,27 @@
   background: #53535f;
 }
 .wc-live.is-live { background: var(--wc-live); }
+/* Pulsing dot while live – the stream is visibly "on". */
+.wc-live.is-live::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 4px 1px 0;
+  border-radius: 50%;
+  background: #fff;
+  animation: wc-blink 1.6s ease-in-out infinite;
+}
+.wc-live.is-changed { animation: wc-pop-sm var(--dur-2) var(--ease-out); }
+
+/* Tuning in (loading an article): header says so and the avatar breathes. */
+.wc.is-tuning .wc-live { background: var(--wc-brand); }
+.wc.is-tuning .wc-avatar { animation: wc-breathe 0.9s ease-in-out infinite alternate; }
+.wc.is-tuning .wc-title { color: var(--wc-muted); font-weight: 600; }
+.wc.is-tuning .wc-viewers, .wc.is-tuning .wc-stream-sub { visibility: hidden; }
+/* A new stream arriving animates in. */
+.wc-stream.is-fresh .wc-stream-text { animation: wc-in var(--dur-3) var(--ease-out); }
+.wc-stream.is-fresh .wc-avatar { animation: wc-pop-sm var(--dur-3) var(--ease-out); }
 .wc-viewers { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: #ff8280; font-variant-numeric: tabular-nums; }
 .wc-viewers[hidden] { display: none; }
 
@@ -149,6 +170,8 @@
   cursor: pointer;
 }
 .wc-icon:disabled { opacity: 0.4; cursor: default; }
+/* Swapped icons (play ↔ pause) pop in, so the change registers. */
+.wc-icon svg { animation: wc-icon-in var(--dur-2) var(--ease-out); }
 /* Media transport icons are filled (DESIGN.md §3 Icons). */
 .wc-icon svg { fill: currentColor; }
 .wc-play:not(:disabled) { background: var(--wc-brand); }
@@ -355,6 +378,7 @@
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  overflow-anchor: none; /* we manage pinning ourselves; anchoring fights it */
   font-size: 14px;
   line-height: 22px;
   scrollbar-width: thin;
@@ -375,15 +399,22 @@
   object-fit: contain;
 }
 .wc-colon { color: var(--wc-text); }
+.wc-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px; /* = the log's line-height */
+  vertical-align: top;
+}
+.wc-who .wc-colon { margin-left: -4px; } /* hug the name */
 .wc-badge {
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
-  margin-right: 4px;
   border-radius: 4px;
-  vertical-align: -4px; /* box centred on the x-height of 14px text */
   color: #fff;
 }
 .wc-badge svg { stroke-width: 2.5; }
@@ -440,6 +471,34 @@
   animation: wc-pop var(--dur-2) var(--ease-out);
 }
 .wc-resume:active { transform: translateX(-50%) scale(0.96); }
+/* Toast: brief confirmation for changes made where the control isn't visible. */
+.wc-toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wc-text);
+  background: rgba(31, 31, 35, 0.96);
+  border: 1px solid var(--wc-line);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -6px) scale(0.96);
+  transition: opacity var(--dur-2) var(--ease-in), transform var(--dur-2) var(--ease-in);
+}
+.wc-toast.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+}
+.wc-toast:empty { display: none; }
+
 .wc-chat-form {
   flex: none;
   display: flex;
@@ -482,8 +541,16 @@
 .wc-keys { font-size: 12px; color: #6e6e7a; }
 
 @keyframes wc-in { from { opacity: 0; transform: translateY(4px); } }
+@keyframes wc-pop-sm { from { transform: scale(0.85); } }
+@keyframes wc-icon-in { from { opacity: 0.4; transform: scale(0.7); } }
+@keyframes wc-breathe { from { opacity: 1; } to { opacity: 0.45; } }
+@keyframes wc-blink { 50% { opacity: 0.35; } }
 @keyframes wc-pop { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.95); } }
-@media (prefers-reduced-motion: reduce) { .wc-msg, .wc-resume { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .wc-msg, .wc-resume, .wc-live, .wc-live::before, .wc-icon svg,
+  .wc-stream.is-fresh .wc-stream-text, .wc-stream.is-fresh .wc-avatar { animation: none; }
+  .wc.is-tuning .wc-avatar { animation: none; opacity: 0.6; } /* still distinct, just not moving */
+}
 
 /* Touch screens: frequent controls get the larger target. */
 @media (pointer: coarse) {

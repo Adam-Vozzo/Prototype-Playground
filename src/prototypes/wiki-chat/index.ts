@@ -1,8 +1,9 @@
 import {
   ArrowDown, BookOpen, ChevronUp, Dices, ExternalLink, FastForward, Hourglass, Megaphone,
-  Pause, PartyPopper, Play, Radio, RotateCcw, Search, SkipForward, TriangleAlert, User,
+  Gauge, MessageSquare, MessageSquareOff, Pause, PartyPopper, Play, Radio, RotateCcw, Smile, Search, SkipForward, TriangleAlert, User,
 } from 'lucide';
 import { h, useStyles } from '../../lib/dom';
+import { setBusy } from '../../lib/feedback';
 import { icon, setIcon, type IconNode } from '../../lib/icon';
 import type { MountFn } from '../../types';
 import css from './style.css?inline';
@@ -119,7 +120,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     autocapitalize: 'off',
     spellcheck: 'false',
   });
-  const loadBtn = h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Go live');
+  const loadBtn = h('button', { class: 'wc-btn wc-primary', type: 'submit' }, icon(Radio), 'Go live');
   const form = h('form', { class: 'wc-form' }, urlInput, loadBtn);
 
   const avatar = h('div', { class: 'wc-avatar', 'aria-hidden': 'true' }, icon(BookOpen, 18));
@@ -190,6 +191,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const header = h('header', { class: 'wc-top' }, stream, form);
 
   const log = h('ol', { class: 'wc-log', role: 'log', 'aria-label': 'Chat messages' });
+  const toastEl = h('div', { class: 'wc-toast', role: 'status', 'aria-live': 'polite' });
   const resumeBtn = h('button', { class: 'wc-resume', type: 'button', hidden: true }, 'Chat paused · jump to latest', icon(ArrowDown, 16));
   const chatInput = h('input', { class: 'wc-chat-input', type: 'text', enterkeyhint: 'send', placeholder: 'Send a message', maxlength: 300, 'aria-label': 'Send a message' });
   const chatForm = h('form', { class: 'wc-chat-form' }, chatInput, h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Chat'));
@@ -213,7 +215,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       'div',
       { class: 'wc' },
       header,
-      h('main', { class: 'wc-chat' }, h('div', { class: 'wc-log-wrap' }, log, resumeBtn), chatForm),
+      h('main', { class: 'wc-chat' }, h('div', { class: 'wc-log-wrap' }, log, resumeBtn, toastEl), chatForm),
       dock,
     ),
   );
@@ -251,8 +253,14 @@ export const mount: MountFn = (root, { slug, signal }) => {
         h(
           'span',
           { class: 'wc-examples' },
-          ...EXAMPLES.map((t) => h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t) }, t)),
-          h('button', { class: 'wc-chip wc-chip-random', type: 'button', onclick: () => randomBtn.click() }, icon(Dices, 16), 'Surprise me'),
+          ...EXAMPLES.map((t) => {
+            const chip: HTMLButtonElement = h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t, chip) }, t);
+            return chip;
+          }),
+          (() => {
+            const chip: HTMLButtonElement = h('button', { class: 'wc-chip wc-chip-random', type: 'button', onclick: () => loadRandom(chip) }, icon(Dices, 16), 'Surprise me');
+            return chip;
+          })(),
         ),
         h('span', { class: 'wc-keys' }, 'Space play/pause · → next · [ ] speed · R restart'),
       ),
@@ -272,12 +280,28 @@ export const mount: MountFn = (root, { slug, signal }) => {
     });
   };
 
+  // Only *you* can pause chat. Scroll events also fire when layout shifts under us
+  // (emotes finish loading, old messages are trimmed, a long message lands before
+  // the next frame), so a scroll away from the bottom only counts as "paused"
+  // if it follows real input; otherwise we re-pin to the bottom.
+  let lastUserInput = -Infinity;
+  const markInput = () => (lastUserInput = performance.now());
+  for (const type of ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'] as const) {
+    log.addEventListener(type, markInput, { signal, passive: true });
+  }
   log.addEventListener(
     'scroll',
     () => {
       const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-      stickToBottom = atBottom;
-      resumeBtn.hidden = atBottom;
+      if (atBottom) {
+        stickToBottom = true;
+        resumeBtn.hidden = true;
+      } else if (performance.now() - lastUserInput < 800) {
+        stickToBottom = false;
+        resumeBtn.hidden = false;
+      } else if (stickToBottom) {
+        scrollToBottom(); // layout moved, not you – stay pinned
+      }
     },
     { signal, passive: true },
   );
@@ -305,7 +329,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
         emotes = loaded;
         const globals = loaded.size - channelCount;
         emoteStatus.textContent = loaded.size
-          ? `${channelCount} from ${CHANNEL.name}’s chat + ${globals} global · 7TV, BetterTTV, FFZ${failed.length ? ` (${failed.join(', ')} unavailable)` : ''}`
+          ? `${channelCount} from ${CHANNEL.name}’s chat + ${globals} global${failed.length ? ' · some sources offline' : ''}`
           : 'Couldn’t reach 7TV, BetterTTV or FFZ – emotes show as text';
         rerenderEmotes();
       })
@@ -335,6 +359,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       if (e.ratio) img.style.aspectRatio = String(e.ratio);
       // If the CDN fails, fall back to the code rather than a broken image.
       img.addEventListener('error', () => img.replaceWith(e.code), { once: true });
+      img.addEventListener('load', () => stickToBottom && scrollToBottom(), { once: true });
       return img;
     });
   }
@@ -352,9 +377,16 @@ export const mount: MountFn = (root, { slug, signal }) => {
     const li = h(
       'li',
       { class: `wc-msg wc-msg--${kind}${kind === 'article' ? ' is-hl' : ''}` },
-      ...badges,
-      h('span', { class: 'wc-name', style: `color:${who.color}` }, who.name),
-      h('span', { class: 'wc-colon' }, ': '),
+      // Badges + name + colon share one line-tall flex box, so they're centred on
+      // each other whatever the font's metrics; the message text flows after it.
+      h(
+        'span',
+        { class: 'wc-who' },
+        ...badges,
+        h('span', { class: 'wc-name', style: `color:${who.color}` }, who.name),
+        h('span', { class: 'wc-colon' }, ':'),
+      ),
+      ' ',
       body,
     );
     append(li);
@@ -462,8 +494,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     playing = on && !!article;
     relabel(playBtn, playing ? Pause : Play, playing ? 'Pause (Space)' : 'Play (Space)');
     playBtn.classList.toggle('is-on', playing);
-    liveBadge.textContent = article ? (playing ? 'LIVE' : 'PAUSED') : 'OFFLINE';
-    liveBadge.classList.toggle('is-live', playing);
+    syncLive();
     clearTimeout(sentenceTimer);
     clearTimeout(chatterTimer);
     clearTimeout(viewerTimer);
@@ -498,10 +529,84 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const retryNotice = (ms: number) =>
     system(Hourglass, `Wikipedia is busy, retrying in ${Math.round(ms / 1000)}s…`);
 
-  async function load(input: string) {
+  // ---------- feedback: tuning state, toasts ----------
+  let tuning = false;
+  const busyTriggers = new Set<HTMLElement>();
+  const wc = root.querySelector<HTMLElement>('.wc')!;
+
+  function syncLive() {
+    liveBadge.textContent = tuning ? 'TUNING IN' : article ? (playing ? 'LIVE' : 'PAUSED') : 'OFFLINE';
+    liveBadge.classList.toggle('is-live', playing && !tuning);
+    // Re-trigger the badge's little pop so state changes are noticed.
+    liveBadge.classList.remove('is-changed');
+    void liveBadge.offsetWidth;
+    liveBadge.classList.add('is-changed');
+  }
+
+  /** The header and the control you pressed both show we're working on it, instantly. */
+  function startTuning(label: string, trigger?: HTMLElement) {
+    tuning = true;
+    if (trigger) {
+      setBusy(trigger, true);
+      busyTriggers.add(trigger);
+    }
+    wc.classList.add('is-tuning');
+    titleEl.textContent = label;
+    syncLive();
+  }
+  function stopTuning(ok: boolean) {
+    tuning = false;
+    for (const t of busyTriggers) setBusy(t, false);
+    busyTriggers.clear();
+    wc.classList.remove('is-tuning');
+    if (!ok) titleEl.textContent = article?.title ?? 'Nothing on air';
+    syncLive();
+  }
+
+  let toastTimer = 0;
+  /** Brief confirmation for changes made where you can't see the control (keyboard shortcuts). */
+  function toast(node: IconNode, text: string) {
+    toastEl.replaceChildren(icon(node, 16), text);
+    toastEl.classList.add('is-shown');
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.classList.remove('is-shown'), 1400);
+  }
+  const panelIsOpen = () => panel.classList.contains('is-open');
+
+  async function loadRandom(trigger: HTMLElement = randomBtn) {
+    if (tuning && busyTriggers.has(trigger)) return;
+    loadCtl?.abort();
+    const ctl = (loadCtl = new AbortController());
+    const onAbort = () => ctl.abort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    setPlaying(false);
+    startTuning('Picking a random article…', trigger);
+    if (trigger !== randomBtn) {
+      setBusy(randomBtn, true);
+      busyTriggers.add(randomBtn);
+    }
+    system(Dices, 'Rolling the dice for a random article…');
+    try {
+      const lang = parseArticleRef(urlInput.value)?.lang ?? article?.lang ?? 'en';
+      const title = await fetchRandomTitle(lang, ctl.signal, retryNotice);
+      if (ctl.signal.aborted) return;
+      signal.removeEventListener('abort', onAbort);
+      loadCtl = null;
+      await load(`${lang}:${title}`, trigger, true);
+    } catch (err) {
+      if (ctl.signal.aborted) return;
+      stopTuning(false);
+      system(TriangleAlert, err instanceof Error ? err.message : 'Random failed.', 'warn');
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  async function load(input: string, trigger: HTMLElement = loadBtn, keepTuning = false) {
     const ref = parseArticleRef(input);
     if (!ref) {
       system(TriangleAlert, 'That doesn’t look like a Wikipedia link.', 'warn');
+      if (keepTuning) stopTuning(false);
       return;
     }
     loadCtl?.abort();
@@ -510,9 +615,15 @@ export const mount: MountFn = (root, { slug, signal }) => {
     signal.addEventListener('abort', onAbort, { once: true });
 
     setPlaying(false);
+    if (!keepTuning) {
+      // A new load replaces any in flight: release the old triggers first.
+      for (const t of busyTriggers) setBusy(t, false);
+      busyTriggers.clear();
+    }
+    startTuning(`Tuning in to “${ref.title}”…`, trigger);
     form.classList.add('is-loading');
-    loadBtn.disabled = true;
     system(Search, `Fetching “${ref.title}”…`);
+    let ok = false;
     try {
       const a = await fetchArticle(ref, ctl.signal, retryNotice);
       if (ctl.signal.aborted) return;
@@ -540,7 +651,11 @@ export const mount: MountFn = (root, { slug, signal }) => {
       stickToBottom = true;
       resumeBtn.hidden = true;
       system(Radio, `Welcome to the chat room! Today's stream: ${a.title}`);
-      setPlaying(true);
+      ok = true;
+      // New stream arrives: header content animates in.
+      stream.classList.remove('is-fresh');
+      void stream.offsetWidth;
+      stream.classList.add('is-fresh');
     } catch (err) {
       if (ctl.signal.aborted) return;
       system(TriangleAlert, err instanceof Error ? err.message : 'Something went wrong.', 'warn');
@@ -548,8 +663,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
       signal.removeEventListener('abort', onAbort);
       if (loadCtl === ctl) {
         form.classList.remove('is-loading');
-        loadBtn.disabled = false;
         loadCtl = null;
+        stopTuning(ok);
+        if (ok) setPlaying(true);
       }
     }
   }
@@ -560,14 +676,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     load(urlInput.value);
   }, { signal });
 
-  randomBtn.addEventListener('click', async () => {
-    try {
-      const lang = parseArticleRef(urlInput.value)?.lang ?? article?.lang ?? 'en';
-      load(`${lang}:${await fetchRandomTitle(lang, signal, retryNotice)}`);
-    } catch (err) {
-      if (!signal.aborted) system(TriangleAlert, err instanceof Error ? err.message : 'Random failed.', 'warn');
-    }
-  }, { signal });
+  randomBtn.addEventListener('click', () => loadRandom(randomBtn), { signal });
 
   playBtn.addEventListener('click', () => setPlaying(!playing), { signal });
   stepBtn.addEventListener('click', () => {
@@ -600,6 +709,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const setSpeed = (s: number) => {
     settings.speed = s;
     speedCtl.set(s);
+    if (!panelIsOpen()) toast(Gauge, `Speed ${s}×`);
     syncSummary();
     save();
     if (playing) {
@@ -610,6 +720,10 @@ export const mount: MountFn = (root, { slug, signal }) => {
   speedCtl.onChange((v) => setSpeed(Number(v)));
   chatterCtl.onChange((v) => {
     settings.chatter = Number(v);
+    // Chat answers in its own channel, so the change is felt where it happens.
+    system(settings.chatter === 0 ? MessageSquareOff : MessageSquare, settings.chatter === 0
+      ? 'Chat muted – just WikiReader and you now'
+      : `Chat activity: ${CHATTER[settings.chatter].label}`);
     syncSummary();
     save();
     scheduleChatter();
@@ -627,6 +741,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   emotesCtl.input.addEventListener('change', () => {
     settings.emotes = emotesCtl.input.checked;
     save();
+    if (!panelIsOpen()) toast(Smile, settings.emotes ? 'Emotes on' : 'Emotes off');
     if (settings.emotes) ensureEmotes();
     rerenderEmotes();
   }, { signal });
