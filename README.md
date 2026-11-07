@@ -10,7 +10,7 @@ deployed by `.github/workflows/deploy.yml`.
 
 | Prototype | What it is |
 | --- | --- |
-| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, voiced by a single `WikiReader` broadcaster. A player dock under the chat box keeps play/pause, next and seek in thumb reach; its **Controls** button expands a settings list upward (section, speed, chat activity, display switches) plus restart / random / Wikipedia actions. Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
+| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, voiced by a single `WikiReader` broadcaster. A player dock under the chat box keeps play/pause, next and seek in thumb reach; its **Controls** button expands a settings list upward (section, speed, chat activity, display switches) plus restart / random / Wikipedia actions. Chat uses the global **7TV, BetterTTV and FFZ** emote sets (`emotes.ts`, fetched in the browser, cached a day, toggle in Controls). Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
 | 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, toggle night and auto-rotate, adjust the frost. |
 
 ## Getting started

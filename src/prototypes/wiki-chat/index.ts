@@ -7,6 +7,7 @@ import { icon, setIcon, type IconNode } from '../../lib/icon';
 import type { MountFn } from '../../types';
 import css from './style.css?inline';
 import { BADGES, createCrowd, pick, type Badge, type Chatter } from './chatters';
+import { emoteLine, loadEmotes, randomEmote, type EmoteMap } from './emotes';
 import { reaction } from './reactions';
 import { fetchArticle, fetchRandomTitle, parseArticleRef, type Article } from './wikipedia';
 
@@ -25,6 +26,7 @@ interface Settings {
   chatter: number;
   highlight: boolean;
   headings: boolean;
+  emotes: boolean;
   panelOpen?: boolean;
 }
 
@@ -33,7 +35,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   // ---------- persisted settings ----------
   const storeKey = `pp:${slug}:settings`;
-  const settings: Settings = { speed: 1, chatter: 2, highlight: true, headings: true };
+  const settings: Settings = { speed: 1, chatter: 2, highlight: true, headings: true, emotes: true };
   try {
     Object.assign(settings, JSON.parse(localStorage.getItem(storeKey) ?? '{}'));
   } catch {}
@@ -93,9 +95,16 @@ export const mount: MountFn = (root, { slug, signal }) => {
     return { el, set, onChange };
   };
   /** Checkbox rendered as a labelled switch row. */
-  const switchCtl = (label: string) => {
+  const switchCtl = (label: string, description?: HTMLElement) => {
     const input = h('input', { type: 'checkbox', role: 'switch', class: 'wc-switch-input' });
-    const el = h('label', { class: 'wc-setting wc-switch' }, settingLabel(label), input, h('span', { class: 'wc-switch-track', 'aria-hidden': 'true' }));
+    const text = description
+      ? h('span', { class: 'wc-setting-text' }, settingLabel(label), description)
+      : settingLabel(label);
+    if (description) {
+      description.id = nextId('desc');
+      input.setAttribute('aria-describedby', description.id);
+    }
+    const el = h('label', { class: 'wc-setting wc-switch' }, text, input, h('span', { class: 'wc-switch-track', 'aria-hidden': 'true' }));
     return { el, input };
   };
 
@@ -156,6 +165,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const chatterCtl = segmented('Chat activity', CHATTER.map((c, i) => ({ value: i, label: c.label })));
   const highlightCtl = switchCtl('Highlight article lines');
   const headingsCtl = switchCtl('Announce new sections');
+  const emoteStatus = h('span', { class: 'wc-setting-desc' }, '7TV · BetterTTV · FFZ');
+  const emotesCtl = switchCtl('Show emotes', emoteStatus);
   const restartBtn = labelBtn(RotateCcw, 'Restart', 'Restart from the top (R)');
   restartBtn.disabled = true;
   const randomBtn = labelBtn(Dices, h('span', {}, 'Random', wide(' article')), 'Load a random article');
@@ -169,7 +180,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       'div',
       { class: 'wc-settings' },
       h('div', { class: 'wc-settings-col' }, sectionField, speedCtl.el, chatterCtl.el),
-      h('div', { class: 'wc-settings-col' }, highlightCtl.el, headingsCtl.el),
+      h('div', { class: 'wc-settings-col' }, highlightCtl.el, headingsCtl.el, emotesCtl.el),
     ),
     h('div', { class: 'wc-actions' }, restartBtn, randomBtn, sourceLink),
   );
@@ -280,15 +291,70 @@ export const mount: MountFn = (root, { slug, signal }) => {
     return h('span', { class: `wc-badge wc-badge-${b}`, title: BADGES[b].label, role: 'img', 'aria-label': BADGES[b].label }, icon(BADGES[b].icon, 12));
   }
 
+  // ---------- emotes ----------
+  let emotes: EmoteMap = new Map();
+  let emotesLoading: Promise<void> | null = null;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+  function ensureEmotes() {
+    if (emotes.size || emotesLoading) return;
+    emoteStatus.textContent = 'Loading 7TV · BetterTTV · FFZ…';
+    emotesLoading = loadEmotes(signal)
+      .then(({ emotes: loaded, failed }) => {
+        if (signal.aborted) return;
+        emotes = loaded;
+        emoteStatus.textContent = loaded.size
+          ? `${loaded.size} global emotes from 7TV · BetterTTV · FFZ${failed.length ? ` (${failed.join(', ')} unavailable)` : ''}`
+          : 'Couldn’t reach 7TV, BetterTTV or FFZ – emotes show as text';
+        rerenderEmotes();
+      })
+      .catch(() => {})
+      .finally(() => (emotesLoading = null));
+  }
+
+  /** Whole-word emote codes become images; everything else stays text. */
+  function richText(text: string): (string | HTMLElement)[] {
+    if (!settings.emotes || !emotes.size) return [text];
+    return text.split(/(\s+)/).map((tok) => {
+      const e = emotes.get(tok);
+      if (!e) return tok;
+      const still = e.animated && reducedMotion.matches;
+      if (still && !e.staticSrc) return tok; // can't freeze it: show the code instead
+      const img = h('img', {
+        class: 'wc-emote',
+        src: still ? e.staticSrc : e.src,
+        srcset: still ? undefined : e.srcset,
+        alt: e.code,
+        title: `${e.code} · ${e.provider}`,
+        height: 28,
+        loading: 'lazy',
+        decoding: 'async',
+        referrerpolicy: 'no-referrer',
+      });
+      if (e.ratio) img.style.aspectRatio = String(e.ratio);
+      // If the CDN fails, fall back to the code rather than a broken image.
+      img.addEventListener('error', () => img.replaceWith(e.code), { once: true });
+      return img;
+    });
+  }
+
+  function rerenderEmotes() {
+    for (const el of log.querySelectorAll<HTMLElement>('.wc-text[data-raw]')) el.replaceChildren(...richText(el.dataset.raw!));
+  }
+
   function post(who: Chatter, text: string, kind: 'chat' | 'article' | 'mine' = 'chat') {
     const badges = who.badges.map(badge);
+    // Article lines are Wikipedia's words – never turn them into emotes.
+    const body = kind === 'article'
+      ? h('span', { class: 'wc-text' }, text)
+      : h('span', { class: 'wc-text', 'data-raw': text }, ...richText(text));
     const li = h(
       'li',
       { class: `wc-msg wc-msg--${kind}${kind === 'article' ? ' is-hl' : ''}` },
       ...badges,
       h('span', { class: 'wc-name', style: `color:${who.color}` }, who.name),
       h('span', { class: 'wc-colon' }, ': '),
-      h('span', { class: 'wc-text' }, text),
+      body,
     );
     append(li);
   }
@@ -354,9 +420,29 @@ export const mount: MountFn = (root, { slug, signal }) => {
       const who = nextChatter();
       let other = nextChatter();
       if (other.name === who.name) other = nextChatter();
-      post(who, reaction(lastSentence, other.name === who.name ? undefined : other.name));
+      const r = Math.random();
+      if (emotes.size && r < 0.04) emoteWall();
+      else if (emotes.size && r < 0.2) post(who, emoteLine(emotes)!);
+      else {
+        let line = reaction(lastSentence, other.name === who.name ? undefined : other.name);
+        if (emotes.size && r > 0.88) line += ` ${randomEmote(emotes)}`;
+        post(who, line);
+      }
       scheduleChatter();
     }, delay);
+  }
+
+  /** Several chatters spam the same emote in a burst, like a real chat. */
+  function emoteWall() {
+    const e = randomEmote(emotes);
+    if (!e) return;
+    const n = 3 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < n; i++) {
+      setTimeout(() => {
+        if (signal.aborted || !playing || !chatOn()) return;
+        post(nextChatter(), Math.random() < 0.3 ? `${e} ${e}` : e);
+      }, i * (90 + Math.random() * 120));
+    }
   }
 
   function driftViewers() {
@@ -536,6 +622,15 @@ export const mount: MountFn = (root, { slug, signal }) => {
     settings.headings = headingsCtl.input.checked;
     save();
   }, { signal });
+  emotesCtl.input.checked = settings.emotes;
+  emotesCtl.input.addEventListener('change', () => {
+    settings.emotes = emotesCtl.input.checked;
+    save();
+    if (settings.emotes) ensureEmotes();
+    rerenderEmotes();
+  }, { signal });
+  // Only contact the emote services when emotes are on.
+  if (settings.emotes) ensureEmotes();
 
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
