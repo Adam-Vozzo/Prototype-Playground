@@ -12,6 +12,8 @@ export type Provider = '7TV' | 'BetterTTV' | 'FFZ';
 export interface Emote {
   code: string;
   provider: Provider;
+  /** Which set it came from: a channel's emotes, or the provider's globals. */
+  scope: 'channel' | 'global';
   src: string;
   srcset: string;
   animated: boolean;
@@ -23,41 +25,78 @@ export interface Emote {
 
 export type EmoteMap = Map<string, Emote>;
 
-const CACHE_KEY = 'pp:wiki-chat:emotes:v1';
+/**
+ * The chat whose emotes we borrow. FFZ resolves the login to a Twitch user ID at
+ * runtime (7TV and BetterTTV only accept IDs); the ID here is the fallback.
+ */
+export const CHANNEL = { login: 'northernlion', name: 'Northernlion', twitchId: '14371185' };
+
+const CACHE_KEY = `pp:wiki-chat:emotes:v2:${CHANNEL.login}`;
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
-const SOURCES: Array<[Provider, string, (json: unknown) => Emote[]]> = [
-  ['7TV', 'https://7tv.io/v3/emote-sets/global', parse7tv],
-  ['BetterTTV', 'https://api.betterttv.net/3/cached/emotes/global', parseBttv],
-  ['FFZ', 'https://api.frankerfacez.com/v1/set/global', parseFfz],
+type Source = { provider: Provider; scope: Emote['scope']; url: (twitchId: string) => string; parse: (json: unknown) => Emote[] };
+
+// Order is precedence on name clashes: channel sets beat globals, then 7TV > BetterTTV > FFZ.
+const SOURCES: Source[] = [
+  { provider: '7TV', scope: 'channel', url: (id) => `https://7tv.io/v3/users/twitch/${id}`, parse: (j) => parse7tv(isObj(j) ? j.emote_set : null) },
+  { provider: 'BetterTTV', scope: 'channel', url: (id) => `https://api.betterttv.net/3/cached/users/twitch/${id}`,
+    parse: (j) => (isObj(j) ? parseBttv([...arr(j.channelEmotes), ...arr(j.sharedEmotes)]) : []) },
+  { provider: 'FFZ', scope: 'channel', url: () => `https://api.frankerfacez.com/v1/room/${CHANNEL.login}`, parse: parseFfz },
+  { provider: '7TV', scope: 'global', url: () => 'https://7tv.io/v3/emote-sets/global', parse: parse7tv },
+  { provider: 'BetterTTV', scope: 'global', url: () => 'https://api.betterttv.net/3/cached/emotes/global', parse: parseBttv },
+  { provider: 'FFZ', scope: 'global', url: () => 'https://api.frankerfacez.com/v1/set/global', parse: parseFfz },
 ];
 
-/** Load every provider's global set. Resolves with whatever succeeded (possibly empty). */
-export async function loadEmotes(signal: AbortSignal): Promise<{ emotes: EmoteMap; failed: Provider[] }> {
+export interface EmoteLoad {
+  emotes: EmoteMap;
+  /** How many came from the channel's own sets. */
+  channelCount: number;
+  /** Sources that failed, e.g. "7TV channel". */
+  failed: string[];
+}
+
+/** Load the channel's sets and every provider's globals. Resolves with whatever succeeded. */
+export async function loadEmotes(signal: AbortSignal): Promise<EmoteLoad> {
   const cached = readCache();
-  if (cached) return { emotes: cached, failed: [] };
+  if (cached) return summarise(cached, []);
+
+  const getJson = async (url: string) => {
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`${res.status} ${url}`);
+    return res.json();
+  };
+
+  // FFZ's room lookup takes a login and tells us the Twitch ID the others need.
+  const ffzRoom = getJson(SOURCES[2].url(''));
+  const twitchId = await ffzRoom.then(
+    (j) => (isObj(j) && isObj(j.room) && j.room.twitch_id ? String(j.room.twitch_id) : CHANNEL.twitchId),
+    () => CHANNEL.twitchId,
+  );
 
   const results = await Promise.allSettled(
-    SOURCES.map(async ([provider, url, parse]) => {
-      const res = await fetch(url, { signal });
-      if (!res.ok) throw new Error(`${provider} ${res.status}`);
-      return parse(await res.json());
-    }),
+    SOURCES.map(async (src, i) => src.parse(await (i === 2 ? ffzRoom : getJson(src.url(twitchId))))),
   );
   const emotes: EmoteMap = new Map();
-  const failed: Provider[] = [];
-  // Earlier sources win on name clashes (7TV, then BetterTTV, then FFZ).
+  const failed: string[] = [];
   results.forEach((r, i) => {
-    if (r.status === 'rejected') return void failed.push(SOURCES[i][0]);
-    for (const e of r.value) if (!emotes.has(e.code)) emotes.set(e.code, e);
+    const { provider, scope } = SOURCES[i];
+    if (r.status === 'rejected') return void failed.push(`${provider} ${scope}`);
+    for (const e of r.value) if (!emotes.has(e.code)) emotes.set(e.code, { ...e, scope });
   });
   if (failed.length === 0 && emotes.size) writeCache(emotes);
-  return { emotes, failed };
+  return summarise(emotes, failed);
+}
+
+function summarise(emotes: EmoteMap, failed: string[]): EmoteLoad {
+  let channelCount = 0;
+  for (const e of emotes.values()) if (e.scope === 'channel') channelCount++;
+  return { emotes, channelCount, failed };
 }
 
 // ---------- provider parsers ----------
 
 const isObj = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null;
+const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const https = (u: string) => (u.startsWith('//') ? `https:${u}` : u);
 const validCode = (c: unknown): c is string => typeof c === 'string' && /^\S{2,40}$/.test(c);
 
@@ -75,6 +114,7 @@ function parse7tv(json: unknown): Emote[] {
     return [{
       code: e.name,
       provider: '7TV',
+      scope: 'global',
       src: `${base}/1x.webp`,
       srcset: `${base}/1x.webp 1x, ${base}/2x.webp 2x`,
       animated: !!e.data.animated,
@@ -90,7 +130,7 @@ function parseBttv(json: unknown): Emote[] {
   return json.flatMap((e: any): Emote[] => {
     if (!validCode(e?.code) || typeof e?.id !== 'string') return [];
     const base = `https://cdn.betterttv.net/emote/${encodeURIComponent(e.id)}`;
-    return [{ code: e.code, provider: 'BetterTTV', src: `${base}/1x`, srcset: `${base}/1x 1x, ${base}/2x 2x`, animated: !!e.animated }];
+    return [{ code: e.code, provider: 'BetterTTV', scope: 'global', src: `${base}/1x`, srcset: `${base}/1x 1x, ${base}/2x 2x`, animated: !!e.animated }];
   });
 }
 
@@ -106,7 +146,7 @@ function parseFfz(json: unknown): Emote[] {
       if (!validCode(e?.name) || typeof u1 !== 'string') return [];
       const u2 = typeof e.urls['2'] === 'string' ? https(e.urls['2']) : https(u1);
       const ratio = e.width && e.height ? e.width / e.height : undefined;
-      return [{ code: e.name, provider: 'FFZ', src: https(u1), srcset: `${https(u1)} 1x, ${u2} 2x`, animated: false, ratio }];
+      return [{ code: e.name, provider: 'FFZ', scope: 'global', src: https(u1), srcset: `${https(u1)} 1x, ${u2} 2x`, animated: false, ratio }];
     });
   });
 }
@@ -136,6 +176,8 @@ function writeCache(emotes: EmoteMap) {
  * Anything not present is skipped; if none are, any loaded emote is used.
  */
 const FAVOURITES = [
+  // Northernlion's chat staples (used most when the channel set has them)
+  'ICANT', 'Cereal', 'Cereal', 'ICANT', 'NOTED', 'Clueless', 'Aware', 'Susge', 'LETSGO', 'peepoClap',
   'monkaS', 'FeelsBadMan', 'FeelsGoodMan', 'FeelsStrongMan', 'FeelsWeirdMan', 'FeelsDankMan',
   'FeelsOkayMan', 'FeelsAmazingMan', 'LuL', 'KEKW', 'OMEGALUL', 'LULW', 'haHAA', 'Pog', 'PogU',
   'POGGERS', 'Sadge', 'PepeHands', 'peepoHappy', 'peepoSad', 'EZ', 'Clap', 'catJAM', 'PepePls',
@@ -145,10 +187,13 @@ const FAVOURITES = [
 
 export function randomEmote(emotes: EmoteMap): string | null {
   if (!emotes.size) return null;
+  const r = Math.random();
   const favs = FAVOURITES.filter((c) => emotes.has(c));
-  if (favs.length && Math.random() < 0.75) return favs[Math.floor(Math.random() * favs.length)];
-  const all = [...emotes.keys()];
-  return all[Math.floor(Math.random() * all.length)];
+  if (favs.length && r < 0.5) return favs[Math.floor(Math.random() * favs.length)];
+  // Otherwise lean on the channel's own emotes – that's what makes it feel like their chat.
+  const pool = [...emotes.values()].filter((e) => r < 0.85 && e.scope === 'channel');
+  const list = pool.length ? pool.map((e) => e.code) : [...emotes.keys()];
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 /** An emote-only chat line: one emote, or the same one spammed a few times. */

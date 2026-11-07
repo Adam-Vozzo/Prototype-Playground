@@ -7,7 +7,7 @@ import { icon, setIcon, type IconNode } from '../../lib/icon';
 import type { MountFn } from '../../types';
 import css from './style.css?inline';
 import { BADGES, createCrowd, pick, type Badge, type Chatter } from './chatters';
-import { emoteLine, loadEmotes, randomEmote, type EmoteMap } from './emotes';
+import { CHANNEL, emoteLine, loadEmotes, randomEmote, type EmoteMap } from './emotes';
 import { reaction } from './reactions';
 import { fetchArticle, fetchRandomTitle, parseArticleRef, type Article } from './wikipedia';
 
@@ -165,7 +165,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const chatterCtl = segmented('Chat activity', CHATTER.map((c, i) => ({ value: i, label: c.label })));
   const highlightCtl = switchCtl('Highlight article lines');
   const headingsCtl = switchCtl('Announce new sections');
-  const emoteStatus = h('span', { class: 'wc-setting-desc' }, '7TV · BetterTTV · FFZ');
+  const emoteStatus = h('span', { class: 'wc-setting-desc' }, `${CHANNEL.name}’s chat · 7TV · BetterTTV · FFZ`);
   const emotesCtl = switchCtl('Show emotes', emoteStatus);
   const restartBtn = labelBtn(RotateCcw, 'Restart', 'Restart from the top (R)');
   restartBtn.disabled = true;
@@ -298,13 +298,14 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   function ensureEmotes() {
     if (emotes.size || emotesLoading) return;
-    emoteStatus.textContent = 'Loading 7TV · BetterTTV · FFZ…';
+    emoteStatus.textContent = `Loading ${CHANNEL.name}’s emotes…`;
     emotesLoading = loadEmotes(signal)
-      .then(({ emotes: loaded, failed }) => {
+      .then(({ emotes: loaded, channelCount, failed }) => {
         if (signal.aborted) return;
         emotes = loaded;
+        const globals = loaded.size - channelCount;
         emoteStatus.textContent = loaded.size
-          ? `${loaded.size} global emotes from 7TV · BetterTTV · FFZ${failed.length ? ` (${failed.join(', ')} unavailable)` : ''}`
+          ? `${channelCount} from ${CHANNEL.name}’s chat + ${globals} global · 7TV, BetterTTV, FFZ${failed.length ? ` (${failed.join(', ')} unavailable)` : ''}`
           : 'Couldn’t reach 7TV, BetterTTV or FFZ – emotes show as text';
         rerenderEmotes();
       })
@@ -325,7 +326,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
         src: still ? e.staticSrc : e.src,
         srcset: still ? undefined : e.srcset,
         alt: e.code,
-        title: `${e.code} · ${e.provider}`,
+        title: `${e.code} · ${e.provider}${e.scope === 'channel' ? ` · ${CHANNEL.name}` : ''}`,
         height: 28,
         loading: 'lazy',
         decoding: 'async',
