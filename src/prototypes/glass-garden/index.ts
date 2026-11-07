@@ -136,11 +136,13 @@ export const mount: MountFn = (root, { signal }) => {
     relabel(liftBtn, lifted ? '⬇' : '⬆', lifted ? 'Lower dome' : 'Lift dome');
     toggle(liftBtn, lifted);
   }, { signal });
-  nightBtn.addEventListener('click', () => {
-    night = !night;
-    relabel(nightBtn, night ? '☀' : '🌙', night ? 'Day' : 'Night');
-    toggle(nightBtn, night);
-  }, { signal });
+  const setNight = (on: boolean, instant = false) => {
+    night = on;
+    if (instant) nightT = on ? 1 : 0;
+    relabel(nightBtn, on ? '☀' : '🌙', on ? 'Day' : 'Night');
+    toggle(nightBtn, on);
+  };
+  nightBtn.addEventListener('click', () => setNight(!night), { signal });
   rotateBtn.addEventListener('click', () => {
     controls.autoRotate = !controls.autoRotate;
     toggle(rotateBtn, controls.autoRotate);
@@ -149,7 +151,9 @@ export const mount: MountFn = (root, { signal }) => {
     wiping = on;
     toggle(wipeBtn, on);
     wrap.classList.toggle('is-wiping', on);
-    hint.textContent = on ? 'Drag across the glass to wipe it clear' : 'Drag to orbit · scroll / pinch to zoom';
+    hint.textContent = on
+      ? 'Drag on the glass to wipe it · drag elsewhere to orbit'
+      : 'Drag to orbit · scroll / pinch to zoom';
   };
   wipeBtn.addEventListener('click', () => setWiping(!wiping), { signal });
   const applyFrost = () => {
@@ -157,6 +161,10 @@ export const mount: MountFn = (root, { signal }) => {
   };
   frost.addEventListener('input', applyFrost, { signal });
   applyFrost();
+
+  // Defaults: start at night (fireflies out) with the wipe tool ready.
+  setNight(true, true);
+  setWiping(true);
 
   document.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -171,20 +179,22 @@ export const mount: MountFn = (root, { signal }) => {
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   let painting = false;
+  /** Wipe where the pointer meets the glass; returns whether it hit. */
   const paintAt = (e: PointerEvent) => {
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
     const hit = raycaster.intersectObject(dome.glass, false)[0];
     if (hit?.uv) dome.wipe(hit.uv);
+    return !!hit;
   };
   // Capture phase so we can claim the gesture before OrbitControls sees it.
+  // Presses that miss the glass fall through, so you can still orbit in wipe mode.
   renderer.domElement.addEventListener('pointerdown', (e) => {
-    if (!wiping) return;
+    if (!wiping || !paintAt(e)) return;
     e.stopImmediatePropagation();
     painting = true;
     renderer.domElement.setPointerCapture(e.pointerId);
-    paintAt(e);
   }, { signal, capture: true });
   renderer.domElement.addEventListener('pointermove', (e) => {
     if (painting) paintAt(e);
