@@ -305,6 +305,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
   }
 
   // ---------- loading ----------
+  const retryNotice = (ms: number) =>
+    system(`⏳ Wikipedia is busy, retrying in ${Math.round(ms / 1000)}s…`);
+
   async function load(input: string) {
     const ref = parseArticleRef(input);
     if (!ref) {
@@ -321,7 +324,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     loadBtn.disabled = true;
     system(`🔎 Fetching “${ref.title}”…`);
     try {
-      const a = await fetchArticle(ref, ctl.signal);
+      const a = await fetchArticle(ref, ctl.signal, retryNotice);
       if (ctl.signal.aborted) return;
       article = a;
       cursor = 0;
@@ -371,7 +374,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   randomBtn.addEventListener('click', async () => {
     try {
       const lang = parseArticleRef(urlInput.value)?.lang ?? article?.lang ?? 'en';
-      load(`${lang}:${await fetchRandomTitle(lang, signal)}`);
+      load(`${lang}:${await fetchRandomTitle(lang, signal, retryNotice)}`);
     } catch (err) {
       if (!signal.aborted) system(`⚠️ ${err instanceof Error ? err.message : 'Random failed.'}`);
     }
