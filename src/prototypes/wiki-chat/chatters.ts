@@ -1,6 +1,7 @@
 /** Fake chat population: names, colours, badges and filler reactions. */
+import { Crown, Gem, Heart, Radio, Shield, Star, type IconNode } from 'lucide';
 
-export type Badge = 'mod' | 'vip' | 'sub' | 'founder' | 'prime';
+export type Badge = 'host' | 'mod' | 'vip' | 'sub' | 'founder' | 'prime';
 
 export interface Chatter {
   name: string;
@@ -8,12 +9,14 @@ export interface Chatter {
   badges: Badge[];
 }
 
-export const BADGE_GLYPH: Record<Badge, { glyph: string; label: string }> = {
-  mod: { glyph: '⚔', label: 'Moderator' },
-  vip: { glyph: '◆', label: 'VIP' },
-  sub: { glyph: '★', label: 'Subscriber' },
-  founder: { glyph: '♛', label: 'Founder' },
-  prime: { glyph: '♚', label: 'Supporter' },
+/** Badge icons are Lucide icons (DESIGN.md §3), drawn white inside a coloured square. */
+export const BADGES: Record<Badge, { icon: IconNode; label: string }> = {
+  host: { icon: Radio, label: 'Broadcaster' },
+  mod: { icon: Shield, label: 'Moderator' },
+  vip: { icon: Gem, label: 'VIP' },
+  sub: { icon: Star, label: 'Subscriber' },
+  founder: { icon: Crown, label: 'Founder' },
+  prime: { icon: Heart, label: 'Supporter' },
 };
 
 const COLORS = [

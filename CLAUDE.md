@@ -7,6 +7,8 @@
 - Prototype CSS: `import css from './style.css?inline'` + `useStyles(css, signal)`, classes prefixed.
 - **UI work follows `DESIGN.md`** (touch targets ≥ 24px, ideally 40px; visible labels over icon-only
   rows; motion tokens; reduced motion). Run its §11 checklist before merging any UI change.
+- **Icons are Lucide** (`import { X } from 'lucide'` + `icon()` from `src/lib/icon.ts`), never emoji or
+  Unicode symbols in UI chrome. Emoji are only for content (chat text, `meta.ts` card icons).
 - Clean up everything in `mount`'s return value or via `signal`; the host mounts/unmounts on navigation.
 - Verify with `npm run build` (runs `tsc --noEmit` then `vite build`) and check the chunk list:
   the main `index-*.js` should stay small.

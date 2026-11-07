@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { ArrowDownToLine, ArrowUpFromLine, Eraser, Moon, Rotate3d, Snowflake } from 'lucide';
 import { h, useStyles } from '../../lib/dom';
+import { icon, setIcon, type IconNode } from '../../lib/icon';
 import type { MountFn } from '../../types';
 import css from './style.css?inline';
 import { createDome, DOME_RADIUS } from './dome';
@@ -96,25 +98,23 @@ export const mount: MountFn = (root, { signal }) => {
   // Icon + visible label at every size (DESIGN.md §3). Two kinds of button:
   //  - action: label says what will happen, no "on" styling (Lift / Lower dome)
   //  - toggle: fixed label + aria-pressed (Night, Auto-rotate, Wipe glass)
-  const btn = (icon: string, label: string, title: string) =>
-    h('button', { class: 'gg-btn', type: 'button', title },
-      h('span', { class: 'gg-ico', 'aria-hidden': 'true' }, icon),
-      h('span', { class: 'gg-label' }, label));
-  const toggleBtn = (icon: string, label: string, title: string) => {
-    const b = btn(icon, label, title);
+  const btn = (node: IconNode, label: string, title: string) =>
+    h('button', { class: 'gg-btn', type: 'button', title }, icon(node, 18, 'gg-ico'), h('span', { class: 'gg-label' }, label));
+  const toggleBtn = (node: IconNode, label: string, title: string) => {
+    const b = btn(node, label, title);
     b.setAttribute('aria-pressed', 'false');
     return b;
   };
-  const relabel = (el: HTMLElement, icon: string, label: string) => {
-    el.querySelector('.gg-ico')!.textContent = icon;
+  const relabel = (el: HTMLElement, node: IconNode, label: string) => {
+    setIcon(el, node, 18);
     el.querySelector('.gg-label')!.textContent = label;
   };
   const setPressed = (el: HTMLElement, on: boolean) => el.setAttribute('aria-pressed', String(on));
 
-  const liftBtn = btn('⬆', 'Lift dome', 'Lift the glass off (L)');
-  const nightBtn = toggleBtn('🌙', 'Night', 'Night time (N)');
-  const rotateBtn = toggleBtn('⟳', 'Auto-rotate', 'Slowly turn the garden (A)');
-  const wipeBtn = toggleBtn('🧽', 'Wipe glass', 'Drag on the dome to clear the frost (W)');
+  const liftBtn = btn(ArrowUpFromLine, 'Lift dome', 'Lift the glass off (L)');
+  const nightBtn = toggleBtn(Moon, 'Night', 'Night time (N)');
+  const rotateBtn = toggleBtn(Rotate3d, 'Auto-rotate', 'Slowly turn the garden (A)');
+  const wipeBtn = toggleBtn(Eraser, 'Wipe glass', 'Drag on the dome to clear the frost (W)');
   const frost = h('input', { type: 'range', min: 0, max: 100, value: 90, 'aria-label': 'Frost amount' });
   const frostValue = h('output', { class: 'gg-frost-value', 'aria-hidden': 'true' });
   const hint = h('p', { class: 'gg-hint', role: 'status' });
@@ -125,7 +125,7 @@ export const mount: MountFn = (root, { signal }) => {
       'div',
       { class: 'gg-panel', role: 'group', 'aria-label': 'Garden controls' },
       h('div', { class: 'gg-buttons' }, liftBtn, nightBtn, rotateBtn, wipeBtn),
-      h('label', { class: 'gg-frost' }, h('span', {}, 'Frost'), frost, frostValue),
+      h('label', { class: 'gg-frost' }, icon(Snowflake, 16), h('span', {}, 'Frost'), frost, frostValue),
     ),
   );
 
@@ -138,7 +138,7 @@ export const mount: MountFn = (root, { signal }) => {
 
   liftBtn.addEventListener('click', () => {
     lifted = !lifted;
-    relabel(liftBtn, lifted ? '⬇' : '⬆', lifted ? 'Lower dome' : 'Lift dome');
+    relabel(liftBtn, lifted ? ArrowDownToLine : ArrowUpFromLine, lifted ? 'Lower dome' : 'Lift dome');
     liftBtn.title = lifted ? 'Put the glass back (L)' : 'Lift the glass off (L)';
   }, { signal });
   const setNight = (on: boolean, instant = false) => {

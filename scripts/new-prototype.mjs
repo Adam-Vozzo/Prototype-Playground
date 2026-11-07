@@ -36,7 +36,8 @@ import type { MountFn } from '../../types';
 import css from './style.css?inline';
 
 // Everything imported from this file is code-split and loaded only when
-// the prototype is opened. UI follows DESIGN.md (targets, labels, motion).
+// the prototype is opened. UI follows DESIGN.md (targets, labels, motion);
+// icons come from Lucide: import { Sparkles } from 'lucide' + icon() from '../../lib/icon'.
 export const mount: MountFn = (root, { signal }) => {
   useStyles(css, signal); // removed automatically on unmount
 

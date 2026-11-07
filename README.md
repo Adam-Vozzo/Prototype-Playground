@@ -10,7 +10,7 @@ deployed by `.github/workflows/deploy.yml`.
 
 | Prototype | What it is |
 | --- | --- |
-| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, full-screen. Play/pause, next and seek are always visible; a labelled **Controls** accordion holds restart, sections, reading speed, chat activity, display switches and random/source links. Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
+| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, voiced by a single `WikiReader` broadcaster. A player dock under the chat box keeps play/pause, next and seek in thumb reach; its **Controls** button expands a settings list upward (section, speed, chat activity, display switches) plus restart / random / Wikipedia actions. Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
 | 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, toggle night and auto-rotate, adjust the frost. |
 
 ## Getting started
@@ -31,7 +31,8 @@ any static host under any path. GitHub Pages deploys need
 [`DESIGN.md`](DESIGN.md) sets the bar for interaction design, UX and motion:
 touch targets (24px minimum, 40px default), labels vs icons, toggle semantics,
 progressive disclosure, feedback timing, motion durations and easing, reduced
-motion and a review checklist. Shared tokens (`--tap`, `--dur-*`, `--ease-*`)
+motion and a review checklist. UI icons are [Lucide](https://lucide.dev/icons)
+(`icon()` in `src/lib/icon.ts`), never emoji. Shared tokens (`--tap`, `--dur-*`, `--ease-*`)
 live in `src/shell/shell.css` and can be used from any prototype's CSS.
 
 ## Adding a prototype
@@ -68,6 +69,7 @@ src/
                      (meta eager, index lazy, memoised + prefetchable)
   types.ts           PrototypeMeta / MountFn contract
   lib/dom.ts         tiny h() helper + useStyles()
+  lib/icon.ts        icon() / setIcon() for Lucide icons
   shell/             library page, prototype host chrome, global CSS
   prototypes/
     wiki-chat/       Wikipedia → stream-chat reader

@@ -42,6 +42,8 @@ a { color: inherit; }
 /* We provide our own :active states, so drop the grey iOS tap flash. */
 html { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Lucide icons (src/lib/icon.ts) inherit text colour and never shrink in flex rows. */
+svg.icon { flex: none; display: block; }
 
 .btn {
   min-height: var(--tap);
@@ -171,6 +173,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .host-back {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: var(--tap);
   text-decoration: none;
   color: var(--muted);
