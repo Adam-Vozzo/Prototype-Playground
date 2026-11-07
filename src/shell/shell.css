@@ -41,6 +41,10 @@ a { color: inherit; }
 
 /* We provide our own :active states, so drop the grey iOS tap flash. */
 html { -webkit-tap-highlight-color: transparent; }
+/* iOS Safari "text autosizing" inflates some text runs but not flex items, which
+   knocks inline layouts out of line (names vs message text). Size text ourselves;
+   pinch-zoom and Safari's text-size setting still work. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 /* No double-tap-to-zoom (it swallows quick repeated taps on controls and causes
    accidental zooms); pinch-zoom still works. Canvases override with none. */
 html, body, button, a, input, select, label, summary, [role='button'] { touch-action: manipulation; }

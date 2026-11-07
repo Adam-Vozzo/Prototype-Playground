@@ -107,7 +107,21 @@
 .wc-sub-progress { flex: none; font-variant-numeric: tabular-nums; display: none; }
 .wc-sub-progress:empty { display: none !important; }
 
-.wc-form { flex: 1 1 340px; min-width: 0; max-width: 560px; display: flex; gap: 8px; }
+/* Text field with buttons inside it (clear, paste, send). The wrapper is the visible box. */
+.wc-input-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  background: var(--wc-panel-2);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  transition: border-color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
+}
+.wc-input-wrap:focus-within { border-color: var(--wc-brand); background: #000; }
+.wc-input-wrap.is-filled { animation: wc-flash var(--dur-4) var(--ease-out); }
 .wc-url, .wc-chat-input {
   flex: 1;
   min-width: 0;
@@ -115,15 +129,52 @@
   font: inherit;
   font-size: 16px; /* < 16px makes iOS zoom on focus (DESIGN.md §6) */
   color: var(--wc-text);
-  background: var(--wc-panel-2);
-  border: 2px solid transparent;
-  border-radius: 8px;
-  padding: 6px 12px;
+  background: none;
+  border: 0;
+  padding: 6px 4px 6px 12px;
   outline: none;
-  transition: border-color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
 }
-.wc-url:focus, .wc-chat-input:focus { border-color: var(--wc-brand); background: #000; }
-.wc-form.is-loading .wc-url { opacity: 0.6; }
+.wc-url:focus-visible, .wc-chat-input:focus-visible { outline: none; } /* the wrapper's accent border is the focus ring */
+.wc-topic-form.is-loading .wc-url { opacity: 0.6; }
+
+/* Icon buttons inside a field. */
+.wc-field-btn, .wc-send {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font: inherit;
+  color: var(--wc-muted);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+.wc-field-btn[hidden] { display: none; }
+.wc-field-btn:active, .wc-send:active:not(:disabled) { transform: scale(0.9); }
+.wc-send { color: #fff; background: var(--wc-brand); }
+.wc-send:disabled { color: var(--wc-muted); background: #2f2f35; cursor: default; }
+.wc-send svg { animation: wc-icon-in var(--dur-2) var(--ease-out); }
+@media (hover: hover) {
+  .wc-field-btn:hover { color: var(--wc-text); background: #2f2f35; }
+  .wc-send:hover:not(:disabled) { background: #772ce8; }
+}
+@media (pointer: coarse) {
+  .wc-field-btn, .wc-send { width: var(--tap); height: var(--tap); }
+}
+
+/* Topic picker (expands upward above the chat row). */
+.wc-topic-panel { background: var(--wc-panel); }
+.wc-topic-panel .wc-panel-body { border-bottom: 0; border-top: 1px solid var(--wc-line); padding-top: 12px; }
+.wc-topic-form { display: flex; flex-direction: column; gap: 10px; max-width: 680px; }
+.wc-topic-label { font-size: 16px; font-weight: 700; }
+.wc-topic-actions { display: flex; gap: var(--gap-tap); }
+.wc-topic-actions .wc-btn { flex: 1 1 0; }
+@container (min-width: 520px) { .wc-topic-actions .wc-btn { flex: 0 0 auto; } }
+.wc-examples-label { flex: none; align-self: center; font-size: 12px; color: var(--wc-muted); margin-right: 2px; }
 
 /* ---------- buttons ---------- */
 .wc-btn, .wc-icon, .wc-more, .wc-chip, .wc-resume, .wc-seg-opt span {
@@ -394,18 +445,19 @@
   height: 28px;
   width: auto;
   min-width: 20px;
-  margin: -5px 1px;
+  margin: -3px 1px;
   vertical-align: middle;
   object-fit: contain;
 }
 .wc-colon { color: var(--wc-text); }
 .wc-who {
   display: inline-flex;
-  align-items: center;
+  align-items: center; /* badges centre on the name… */
   gap: 4px;
-  height: 22px; /* = the log's line-height */
-  vertical-align: top;
+  vertical-align: baseline; /* …and the name sits on the message's first-line baseline */
 }
+/* Name and colon join the baseline group, so the box's baseline is the name's. */
+.wc-who .wc-name, .wc-who .wc-colon { align-self: baseline; }
 .wc-who .wc-colon { margin-left: -4px; } /* hug the name */
 .wc-badge {
   flex: none;
@@ -502,6 +554,7 @@
 .wc-chat-form {
   flex: none;
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 8px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
   background: var(--wc-bg);
@@ -522,7 +575,18 @@
   border: 1px solid var(--wc-line);
   border-radius: 10px;
 }
-.wc-examples { display: flex; flex-wrap: wrap; gap: var(--gap-tap); }
+.wc-examples {
+  display: flex;
+  gap: var(--gap-tap);
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  margin: 0 -14px;
+  padding: 0 14px 2px;
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 24px), transparent);
+}
+.wc-examples::-webkit-scrollbar { display: none; }
+.wc-chip { flex: none; }
 .wc-chip {
   min-height: var(--tap);
   display: inline-flex;
@@ -542,12 +606,13 @@
 
 @keyframes wc-in { from { opacity: 0; transform: translateY(4px); } }
 @keyframes wc-pop-sm { from { transform: scale(0.85); } }
+@keyframes wc-flash { from { border-color: var(--wc-brand); box-shadow: 0 0 0 4px rgba(145, 71, 255, 0.35); } }
 @keyframes wc-icon-in { from { opacity: 0.4; transform: scale(0.7); } }
 @keyframes wc-breathe { from { opacity: 1; } to { opacity: 0.45; } }
 @keyframes wc-blink { 50% { opacity: 0.35; } }
 @keyframes wc-pop { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.95); } }
 @media (prefers-reduced-motion: reduce) {
-  .wc-msg, .wc-resume, .wc-live, .wc-live::before, .wc-icon svg,
+  .wc-msg, .wc-resume, .wc-live, .wc-live::before, .wc-icon svg, .wc-send svg, .wc-input-wrap.is-filled,
   .wc-stream.is-fresh .wc-stream-text, .wc-stream.is-fresh .wc-avatar { animation: none; }
   .wc.is-tuning .wc-avatar { animation: none; opacity: 0.6; } /* still distinct, just not moving */
 }
@@ -560,11 +625,14 @@
 
 @media (max-width: 700px) {
   .wc-top { padding-top: 8px; padding-bottom: 8px; }
-  .wc-form { flex-basis: 100%; max-width: none; }
   .wc-stream-sub .wc-desc { display: none; }
   .wc-sub-progress { display: inline; }
   .wc-progress-label { display: none; }
   .wc-transport, .wc-panel-body, .wc-chat-form { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  .wc-examples { margin: 0 -10px; padding: 0 10px 2px; }
+  /* Reading text on phones is 16px (DESIGN.md §10). */
+  .wc-log { font-size: 16px; line-height: 24px; }
+  .wc-topic-btn .wc-chevron { display: none; }
   .wc-panel.is-open .wc-panel-clip { max-height: 50dvh; }
   .wc-setting { min-height: 48px; padding: 4px 0; }
   .wc-actions { padding-top: 10px; }
@@ -573,4 +641,8 @@
 }
 @media (max-width: 480px) {
   .wc-more-summary { display: none; }
+}
+@media (max-width: 359px) {
+  /* Very narrow: the label alone carries the New topic button, giving the chat field room. */
+  .wc-topic-btn > svg:first-child { display: none; }
 }
