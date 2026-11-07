@@ -9,6 +9,8 @@
   rows; motion tokens; reduced motion). Run its §11 checklist before merging any UI change.
 - **Icons are Lucide** (`import { X } from 'lucide'` + `icon()` from `src/lib/icon.ts`), never emoji or
   Unicode symbols in UI chrome. Emoji are only for content (chat text, `meta.ts` card icons).
+- **Feedback is required** (DESIGN.md §5): every control has hover/pressed/focus/selected/busy states,
+  async actions call `setBusy()` from `src/lib/feedback.ts` immediately, and the UI says what it's doing.
 - Clean up everything in `mount`'s return value or via `signal`; the host mounts/unmounts on navigation.
 - Verify with `npm run build` (runs `tsc --noEmit` then `vite build`) and check the chunk list:
   the main `index-*.js` should stay small.

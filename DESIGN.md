@@ -162,16 +162,71 @@ Disclosure rules:
 
 ## 5. Feedback & state
 
+**The system talks back.** Every action gets an answer people can see, and
+every state the system is in is visible. Sometimes the answer is literal
+("Fetching Octopus…"). More often it's visual: a pressed button, a spinner where
+the icon was, a header that says "Tuning in", content animating into place.
+Silence is a bug. If someone taps and nothing changes for even half a second,
+they'll tap again or assume it's broken.
+
+### Every control has a full set of states
+
+| State | When | Must look like |
+| --- | --- | --- |
+| Rest | Default | Clearly interactive: shape, fill or underline; not just colour |
+| Hover | Pointer over it, `@media (hover: hover)` only | A slight lift: lighter fill or accent border, over `--dur-1` |
+| Pressed | `:active`, while the finger or button is down | Darker fill and/or `scale(0.96)`, over `--dur-1`. On touch this is the *only* proof a tap registered |
+| Focus | `:focus-visible` | The 2 px `--focus` ring (§8) |
+| Selected / on | `aria-pressed`, `:checked`, `aria-current`, `aria-expanded` | Accent fill or accent border, plus a non-colour cue (filled icon, check, thumb position, rotated chevron) |
+| Busy | The action is running | `setBusy(el, true)` from `src/lib/feedback.ts`: a spinner replaces the icon, the label and width stay put, `aria-busy`, and it can't be triggered twice |
+| Disabled | Not available right now | ~45% opacity, `cursor: default`, no hover. Say why nearby if it isn't obvious |
+| Success / error | The result | Shown where the result is: content appears, or an inline message with a way to recover |
+
+Hover is never the only signal (touch has none), and busy is never shown as
+disabled (busy means "working on it", not "unavailable").
+
+### Timing: how soon, and what
+
 | Delay | What the user should see |
 | --- | --- |
-| < 100 ms | Immediate: pressed/active style, state change |
-| 100 ms – 1 s | Something is happening: button busy state, cursor change |
-| > 1 s | Explicit progress: spinner/skeleton plus text ("Fetching Octopus…") |
-| > 10 s | Progress with an estimate or a way to cancel |
+| 0–100 ms | Pressed style, and the state change itself if it's local (toggle flips, panel opens) |
+| 100 ms – 1 s | The control goes busy *immediately* (don't wait to see if it'll be slow), and the cursor shows progress |
+| > 1 s | Say what's happening in words, where people are looking: "Picking a random article…", a header status, a skeleton |
+| > 10 s | Progress with an estimate, retry status ("Wikipedia is busy, retrying in 8 s…") or a way to cancel |
 
-- Every pressable element has an `:active` (pressed) style, such as a slight
-  darken or `scale(0.96)` over `--dur-1`. On touch this is the only
-  confirmation that a tap registered.
+### The system talks through content and context
+
+- **Narrate long operations** in the product's own voice and channel. In a chat
+  prototype that's a system message; elsewhere a status line or caption. Name
+  the thing ("Fetching “Octopus”…"), not the mechanism ("Loading…").
+- **Show state where it lives.** If something is loading, the area it will fill
+  shows it (header "Tuning in", pulsing avatar), not just the button.
+- **Acknowledge changes whose effect isn't visible yet.** If turning chat off
+  only shows as an absence later, say so now ("Chat muted"). If a keyboard
+  shortcut changes a hidden setting, flash a short toast ("Speed 1.5×").
+- **Arrivals animate in.** New content (a message, a loaded article, a revealed
+  panel) enters with a short fade and slide or scale (§7), so the eye catches
+  what changed.
+- **Ambient signals for ongoing state:** a pulsing "live" dot while running, a
+  breathing placeholder while loading. Under reduced motion these become static
+  but stay visually distinct.
+
+### Microinteractions
+
+Small, fast animations that confirm an action. Use them generously, as long as
+each has a purpose (§7):
+
+- Press: `scale(0.96)` on `:active`.
+- Toggle: thumb slides, fill cross-fades.
+- Swap: the new icon pops in (`scale(0.7)` → 1, `--dur-2`) when play becomes
+  pause.
+- Status change: the badge pops (`scale(0.85)` → 1) when LIVE becomes PAUSED.
+- Disclosure: the chevron rotates 180°.
+
+Keep each under `--dur-3`, use the motion tokens, and never block input.
+
+### Other rules
+
 - Turn off the grey iOS tap flash (`-webkit-tap-highlight-color: transparent`)
   **only** where you provide your own `:active` style. The shell does this
   globally for that reason.
@@ -181,7 +236,11 @@ Disclosure rules:
   recover (Retry, an example). Never fail silently.
 - **Layout stays stable.** Reserve space for things that load in, such as
   thumbnails, counters and labels with changing text (use `tabular-nums`).
-  Content shouldn't jump under your finger.
+  Busy states swap the icon rather than adding width. Content shouldn't jump
+  under your finger.
+- **Never take control away.** Auto-behaviour (auto-scroll, auto-advance) only
+  stops for a real user action, never because of a layout shift. If you can't
+  tell the two apart, keep going.
 - Prefer **undo over confirm**. Don't stop people with dialogs for actions that
   are cheap to reverse.
 
@@ -200,7 +259,11 @@ Disclosure rules:
   zoom at 200%. Nothing important may be clipped or overlapping.
 - Scrolling containers inside the page use `overscroll-behavior: contain`, so
   reaching the end doesn't scroll or refresh the page behind them.
-- Don't hijack pinch-zoom globally. Use `touch-action` per surface instead.
+- **Double-tap-to-zoom is off** (`touch-action: manipulation`, set globally in
+  the shell). It swallows quick repeated taps on controls (next, next, next) and
+  causes accidental zooms. **Pinch-zoom must keep working.** Never use
+  `user-scalable=no` or `maximum-scale`. Drag surfaces (canvases) use
+  `touch-action: none` on themselves only.
 
 ---
 
@@ -321,7 +384,9 @@ Run before merging any UI change.
 - [ ] No icon-only control except play/pause, close, back, send, search.
 - [ ] Every UI icon is Lucide via `src/lib/icon.ts`; no emoji or Unicode symbols in chrome.
 - [ ] Toggles are action-style *or* state-style (§3), never both.
-- [ ] Every pressable has hover (behind `(hover: hover)`), `:active` and `:focus-visible` states.
+- [ ] Every control has rest, hover (behind `(hover: hover)`), pressed, focus, selected (if it has one), disabled and busy states (§5).
+- [ ] Every action answers within 100 ms; anything async shows busy at once and narrates if it takes over 1 s.
+- [ ] Quick repeated taps don't zoom the page; pinch-zoom still works.
 - [ ] Text inputs are ≥ 16 px; bottom and edge bars respect safe areas.
 - [ ] Motion uses the tokens; nothing in the UI is over ~400 ms; it can be interrupted.
 - [ ] Reduced motion checked (DevTools → Rendering → Emulate `prefers-reduced-motion`).

@@ -70,6 +70,7 @@ src/
   types.ts           PrototypeMeta / MountFn contract
   lib/dom.ts         tiny h() helper + useStyles()
   lib/icon.ts        icon() / setIcon() for Lucide icons
+  lib/feedback.ts    setBusy() busy state for buttons
   shell/             library page, prototype host chrome, global CSS
   prototypes/
     wiki-chat/       Wikipedia → stream-chat reader
