@@ -5,6 +5,9 @@ page lists every prototype; each one is code-split and **only downloaded when
 you open it** (or hover its card, as a prefetch), so adding the 50th prototype
 costs the home page a few hundred bytes, not another copy of three.js.
 
+**Live:** https://adam-vozzo.github.io/Prototype-Playground/ — every push to `main` is built and
+deployed by `.github/workflows/deploy.yml`.
+
 | Prototype | What it is |
 | --- | --- |
 | 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message. Play/pause, step, restart, seek, jump to section, speed, chatter level, highlight & section toggles, and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
@@ -20,7 +23,8 @@ npm run preview    # serve the production build
 ```
 
 The build uses a relative base and hash routing, so `dist/` can be dropped on
-any static host (GitHub Pages, Netlify, S3…) under any path.
+any static host under any path. GitHub Pages deploys need
+**Settings → Pages → Source: GitHub Actions**.
 
 ## Adding a prototype
 
