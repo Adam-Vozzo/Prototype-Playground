@@ -162,6 +162,13 @@ Disclosure rules:
 - **Buttons inside fields** (clear, paste, send) are ≥ 40 px on touch. Clear
   only appears when there's something to clear, and send is disabled until
   there's something to send. The field's border is its focus indicator.
+  - A **primary action that ends a field** (send) is a flush block: it fills
+    the field's full height at its end, with square inner corners, so the
+    field's own rounded corner shapes it. It's not a floating circle with a
+    gap around it.
+  - **Field + buttons** sit on one row while the field can stay comfortably
+    wide (~260 px+). Below that, the buttons wrap to a row of equal halves
+    under the field. Use a container query, not a viewport breakpoint.
 
 ---
 

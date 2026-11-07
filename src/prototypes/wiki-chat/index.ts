@@ -20,13 +20,29 @@ const CHATTER = [
   { label: 'Chaos', range: [70, 380] },
 ] as const;
 const MAX_MESSAGES = 250;
-const EXAMPLES = ['Octopus', 'Great Emu War', 'Toast', 'Voyager 1', 'Honey badger', 'Tardigrade'];
+/** Suggested topics: long, lively articles (short stubs make for a two-message stream). Shown shuffled. */
+const EXAMPLES = [
+  'Octopus', 'Great Emu War', 'Voyager 1', 'Honey badger', 'Tardigrade', 'Black hole', 'Byzantine Empire',
+  'Mount Everest', 'Platypus', 'Great Wall of China', 'Coffee', 'Apollo 11', 'Antarctica', 'Roman Empire',
+  'Ancient Egypt', 'RMS Titanic', 'Western honey bee', 'Great white shark', 'Tyrannosaurus', 'Aurora',
+  'Saturn', 'Mars', 'Jellyfish', 'Silk Road', 'Leonardo da Vinci', 'Chess', 'Pizza', 'Samurai', 'Vikings',
+  'Giza pyramid complex', 'Eiffel Tower', 'Emperor penguin', 'Coral reef', 'African elephant', 'Wolf', 'Moai',
+  'Stonehenge', 'Dodo', 'Mona Lisa', 'Tsunami', 'Tea', 'Chocolate', 'Lightning', 'Blue whale', 'Axolotl',
+  'Mantis shrimp', 'Bermuda Triangle', 'Banana', 'Lego', 'Volcano', 'Pompeii', 'Cleopatra', 'Mariana Trench',
+  'Black Death', 'Moon', 'Pluto', 'Printing press', 'Komodo dragon', 'Sloth', 'Sea otter', 'Venus flytrap',
+];
+const shuffle = <T>(arr: T[]): T[] => {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
 interface Settings {
   speed: number;
   chatter: number;
-  highlight: boolean;
-  headings: boolean;
   emotes: boolean;
   panelOpen?: boolean;
 }
@@ -36,7 +52,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   // ---------- persisted settings ----------
   const storeKey = `pp:${slug}:settings`;
-  const settings: Settings = { speed: 1, chatter: 2, highlight: true, headings: true, emotes: true };
+  const settings: Settings = { speed: 1, chatter: 2, emotes: true };
   try {
     Object.assign(settings, JSON.parse(localStorage.getItem(storeKey) ?? '{}'));
   } catch {}
@@ -130,13 +146,20 @@ export const mount: MountFn = (root, { slug, signal }) => {
     const chip: HTMLButtonElement = h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t, chip) }, t);
     return chip;
   });
+  const examplesLabel = h('span', { class: 'wc-examples-label' }, 'Try');
+  const examplesEl = h('div', { class: 'wc-examples', role: 'group', 'aria-label': 'Suggestions' });
+  /** A fresh order every time the picker opens, so it always offers something new. */
+  const shuffleExamples = () => {
+    examplesEl.replaceChildren(examplesLabel, ...shuffle(examples));
+    examplesEl.scrollLeft = 0;
+  };
   const form = h(
     'form',
     { class: 'wc-topic-form' },
     h('label', { class: 'wc-topic-label', for: topicInputId }, 'What do you want to learn about today?'),
-    h('div', { class: 'wc-input-wrap' }, urlInput, clearBtn, pasteBtn),
-    h('div', { class: 'wc-topic-actions' }, randomBtn, loadBtn),
-    h('div', { class: 'wc-examples', role: 'group', 'aria-label': 'Suggestions' }, h('span', { class: 'wc-examples-label' }, 'Try'), ...examples),
+    // Field and buttons share a row; on narrow screens the buttons drop below as two equal halves.
+    h('div', { class: 'wc-topic-row' }, h('div', { class: 'wc-input-wrap' }, urlInput, clearBtn, pasteBtn), h('div', { class: 'wc-topic-actions' }, randomBtn, loadBtn)),
+    examplesEl,
   );
   const topicId = nextId('topic');
   const topicPanel = h(
@@ -191,12 +214,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
   // --- one tap away: settings list + actions, expanding upward above the dock ---
   const sectionSelect = h('select', { class: 'wc-select wc-setting-control', disabled: true });
   const sectionField = h('label', { class: 'wc-setting wc-setting--wide' }, settingLabel('Section'), sectionSelect);
-  const speedCtl = segmented('Speed', SPEEDS.map((v) => ({ value: v, label: `${v}×` })), '[ ]');
+  const speedCtl = segmented('Speed', SPEEDS.map((v) => ({ value: v, label: `${v}×` })));
   const chatterCtl = segmented('Chat activity', CHATTER.map((c, i) => ({ value: i, label: c.label })));
-  const highlightCtl = switchCtl('Highlight article lines');
-  const headingsCtl = switchCtl('Announce new sections');
-  const emoteStatus = h('span', { class: 'wc-setting-desc' }, `${CHANNEL.name}’s chat · 7TV · BetterTTV · FFZ`);
-  const emotesCtl = switchCtl('Show emotes', emoteStatus);
+  const emotesCtl = switchCtl('Show emotes');
   const restartBtn = labelBtn(RotateCcw, 'Restart', 'Restart from the top (R)');
   restartBtn.disabled = true;
   const sourceLink = h('a', { class: 'wc-btn wc-btn-labelled', target: '_blank', rel: 'noopener', hidden: true, title: 'Open this article on Wikipedia' },
@@ -208,8 +228,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
     h(
       'div',
       { class: 'wc-settings' },
-      h('div', { class: 'wc-settings-col' }, sectionField, speedCtl.el, chatterCtl.el),
-      h('div', { class: 'wc-settings-col' }, highlightCtl.el, headingsCtl.el, emotesCtl.el),
+      h('div', { class: 'wc-settings-col' }, sectionField, speedCtl.el),
+      h('div', { class: 'wc-settings-col' }, chatterCtl.el, emotesCtl.el),
     ),
     h('div', { class: 'wc-actions' }, restartBtn, sourceLink),
   );
@@ -270,6 +290,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   // Topic picker: one disclosure open at a time, so the bottom of the screen never stacks up.
   function setTopicOpen(open: boolean) {
     if (open && panel.classList.contains('is-open')) setPanelOpen(false, false);
+    if (open && !topicPanel.classList.contains('is-open')) shuffleExamples();
     topicBtn.setAttribute('aria-expanded', String(open));
     topicPanel.classList.toggle('is-open', open);
     topicPanel.inert = !open;
@@ -397,17 +418,13 @@ export const mount: MountFn = (root, { slug, signal }) => {
   let emotesLoading: Promise<void> | null = null;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-  function ensureEmotes() {
+  function ensureEmotes(userAsked = false) {
     if (emotes.size || emotesLoading) return;
-    emoteStatus.textContent = `Loading ${CHANNEL.name}’s emotes…`;
     emotesLoading = loadEmotes(signal)
-      .then(({ emotes: loaded, channelCount, failed }) => {
+      .then(({ emotes: loaded }) => {
         if (signal.aborted) return;
         emotes = loaded;
-        const globals = loaded.size - channelCount;
-        emoteStatus.textContent = loaded.size
-          ? `${channelCount} from ${CHANNEL.name}’s chat + ${globals} global${failed.length ? ' · some sources offline' : ''}`
-          : 'Couldn’t reach 7TV, BetterTTV or FFZ – emotes show as text';
+        if (!loaded.size && userAsked) toast(TriangleAlert, 'Couldn’t load emotes – they’ll show as text');
         rerenderEmotes();
       })
       .catch(() => {})
@@ -492,7 +509,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     if (cursor >= article.sentences.length) return finish();
     const s = article.sentences[cursor];
     const prevSection = cursor > 0 ? article.sentences[cursor - 1].section : -1;
-    if (s.section !== prevSection && s.section > 0 && settings.headings) {
+    if (s.section !== prevSection && s.section > 0) {
       system(Megaphone, `Now reading: ${article.sections[s.section]}`, 'section');
     }
     post(narrator, s.text, 'article');
@@ -782,9 +799,6 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   speedCtl.set(settings.speed);
   chatterCtl.set(settings.chatter);
-  highlightCtl.input.checked = settings.highlight;
-  headingsCtl.input.checked = settings.headings;
-  log.classList.toggle('no-hl', !settings.highlight);
   syncSummary();
 
   const setSpeed = (s: number) => {
@@ -809,21 +823,12 @@ export const mount: MountFn = (root, { slug, signal }) => {
     save();
     scheduleChatter();
   });
-  highlightCtl.input.addEventListener('change', () => {
-    settings.highlight = highlightCtl.input.checked;
-    log.classList.toggle('no-hl', !settings.highlight);
-    save();
-  }, { signal });
-  headingsCtl.input.addEventListener('change', () => {
-    settings.headings = headingsCtl.input.checked;
-    save();
-  }, { signal });
   emotesCtl.input.checked = settings.emotes;
   emotesCtl.input.addEventListener('change', () => {
     settings.emotes = emotesCtl.input.checked;
     save();
     if (!panelIsOpen()) toast(Smile, settings.emotes ? 'Emotes on' : 'Emotes off');
-    if (settings.emotes) ensureEmotes();
+    if (settings.emotes) ensureEmotes(true);
     rerenderEmotes();
   }, { signal });
   // Only contact the emote services when emotes are on.
