@@ -157,6 +157,11 @@ Disclosure rules:
 - `Esc` collapses it when focus is inside, and focus goes back to the trigger.
 - Remember open/closed per prototype in `localStorage` when people are likely to
   want it the same way every time.
+- **One disclosure open at a time** in the same area. Opening one closes its
+  neighbour, so the bottom of a phone screen never stacks two panels.
+- **Buttons inside fields** (clear, paste, send) are ≥ 40 px on touch. Clear
+  only appears when there's something to clear, and send is disabled until
+  there's something to send. The field's border is its focus indicator.
 
 ---
 
@@ -248,6 +253,10 @@ Keep each under `--dur-3`, use the motion tokens, and never block input.
 
 ## 6. Mobile specifics
 
+- **`text-size-adjust: 100%`** is set in the shell. Without it, iOS Safari
+  enlarges some text runs but not flex items, so inline layouts fall out of
+  line (a username ends up smaller than, and above, its message). Size text
+  deliberately instead; pinch-zoom and Safari's text-size setting still work.
 - **Text inputs ≥ 16 px font size.** Smaller text makes iOS Safari zoom the page
   on focus. This one is a must.
 - Set `inputmode`, `enterkeyhint`, `autocomplete` and `spellcheck` to suit each

@@ -1,5 +1,5 @@
 import {
-  ArrowDown, BookOpen, ChevronUp, Dices, ExternalLink, FastForward, Hourglass, Megaphone,
+  ArrowDown, ArrowUp, BookOpen, ClipboardPaste, X, ChevronUp, Dices, ExternalLink, FastForward, Hourglass, Megaphone,
   Gauge, MessageSquare, MessageSquareOff, Pause, PartyPopper, Play, Radio, RotateCcw, Smile, Search, SkipForward, TriangleAlert, User,
 } from 'lucide';
 import { h, useStyles } from '../../lib/dom';
@@ -109,19 +109,48 @@ export const mount: MountFn = (root, { slug, signal }) => {
     return { el, input };
   };
 
+  // --- topic picker: expands upward from the chat row (DESIGN.md §2 thumb reach) ---
+  const topicInputId = nextId('topic-input');
   const urlInput = h('input', {
+    id: topicInputId,
     class: 'wc-url',
     type: 'text',
-    inputmode: 'url',
     enterkeyhint: 'go',
-    placeholder: 'Paste a Wikipedia link or type a title…',
-    'aria-label': 'Wikipedia URL or article title',
+    placeholder: 'A topic, title or Wikipedia link',
     autocomplete: 'off',
     autocapitalize: 'off',
     spellcheck: 'false',
   });
-  const loadBtn = h('button', { class: 'wc-btn wc-primary', type: 'submit' }, icon(Radio), 'Go live');
-  const form = h('form', { class: 'wc-form' }, urlInput, loadBtn);
+  const clearBtn = h('button', { class: 'wc-field-btn', type: 'button', 'aria-label': 'Clear', title: 'Clear', hidden: true }, icon(X, 18));
+  const pasteBtn = h('button', { class: 'wc-field-btn', type: 'button', 'aria-label': 'Paste from clipboard', title: 'Paste from clipboard' }, icon(ClipboardPaste, 18));
+  const loadLabel = h('span', {}, 'Go live');
+  const loadBtn = h('button', { class: 'wc-btn wc-primary', type: 'submit' }, icon(Radio), loadLabel);
+  const randomBtn = labelBtn(Dices, 'Random', 'Load a random article');
+  const examples = EXAMPLES.map((t) => {
+    const chip: HTMLButtonElement = h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t, chip) }, t);
+    return chip;
+  });
+  const form = h(
+    'form',
+    { class: 'wc-topic-form' },
+    h('label', { class: 'wc-topic-label', for: topicInputId }, 'What do you want to learn about today?'),
+    h('div', { class: 'wc-input-wrap' }, urlInput, clearBtn, pasteBtn),
+    h('div', { class: 'wc-topic-actions' }, randomBtn, loadBtn),
+    h('div', { class: 'wc-examples', role: 'group', 'aria-label': 'Suggestions' }, h('span', { class: 'wc-examples-label' }, 'Try'), ...examples),
+  );
+  const topicId = nextId('topic');
+  const topicPanel = h(
+    'div',
+    { class: 'wc-panel wc-topic-panel', id: topicId, role: 'region', 'aria-label': 'New topic' },
+    h('div', { class: 'wc-panel-clip' }, h('div', { class: 'wc-panel-body' }, form)),
+  );
+  const topicBtn = h(
+    'button',
+    { class: 'wc-more wc-topic-btn', type: 'button', 'aria-expanded': 'false', 'aria-controls': topicId },
+    icon(Search, 18),
+    h('span', {}, 'New topic'),
+    icon(ChevronUp, 18, 'wc-chevron'),
+  );
 
   const avatar = h('div', { class: 'wc-avatar', 'aria-hidden': 'true' }, icon(BookOpen, 18));
   const liveBadge = h('span', { class: 'wc-live' }, 'OFFLINE');
@@ -170,7 +199,6 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const emotesCtl = switchCtl('Show emotes', emoteStatus);
   const restartBtn = labelBtn(RotateCcw, 'Restart', 'Restart from the top (R)');
   restartBtn.disabled = true;
-  const randomBtn = labelBtn(Dices, h('span', {}, 'Random', wide(' article')), 'Load a random article');
   const sourceLink = h('a', { class: 'wc-btn wc-btn-labelled', target: '_blank', rel: 'noopener', hidden: true, title: 'Open this article on Wikipedia' },
     icon(ExternalLink), h('span', {}, wide('Open on '), 'Wikipedia'));
 
@@ -183,18 +211,19 @@ export const mount: MountFn = (root, { slug, signal }) => {
       h('div', { class: 'wc-settings-col' }, sectionField, speedCtl.el, chatterCtl.el),
       h('div', { class: 'wc-settings-col' }, highlightCtl.el, headingsCtl.el, emotesCtl.el),
     ),
-    h('div', { class: 'wc-actions' }, restartBtn, randomBtn, sourceLink),
+    h('div', { class: 'wc-actions' }, restartBtn, sourceLink),
   );
   // panel (grid rows 0fr↔1fr) > clip (min-height 0, clips) > body (padding, layout)
   const panel = h('div', { class: 'wc-panel', id: panelId, role: 'region', 'aria-label': 'Controls' }, h('div', { class: 'wc-panel-clip' }, panelBody));
 
-  const header = h('header', { class: 'wc-top' }, stream, form);
+  const header = h('header', { class: 'wc-top' }, stream);
 
   const log = h('ol', { class: 'wc-log', role: 'log', 'aria-label': 'Chat messages' });
   const toastEl = h('div', { class: 'wc-toast', role: 'status', 'aria-live': 'polite' });
   const resumeBtn = h('button', { class: 'wc-resume', type: 'button', hidden: true }, 'Chat paused · jump to latest', icon(ArrowDown, 16));
   const chatInput = h('input', { class: 'wc-chat-input', type: 'text', enterkeyhint: 'send', placeholder: 'Send a message', maxlength: 300, 'aria-label': 'Send a message' });
-  const chatForm = h('form', { class: 'wc-chat-form' }, chatInput, h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Chat'));
+  const sendBtn = h('button', { class: 'wc-send', type: 'submit', 'aria-label': 'Send message', title: 'Send', disabled: true }, icon(ArrowUp, 18));
+  const chatForm = h('form', { class: 'wc-chat-form' }, h('div', { class: 'wc-input-wrap wc-chat-wrap' }, chatInput, sendBtn), topicBtn);
 
   const dock = h(
     'footer',
@@ -215,13 +244,14 @@ export const mount: MountFn = (root, { slug, signal }) => {
       'div',
       { class: 'wc' },
       header,
-      h('main', { class: 'wc-chat' }, h('div', { class: 'wc-log-wrap' }, log, resumeBtn, toastEl), chatForm),
+      h('main', { class: 'wc-chat' }, h('div', { class: 'wc-log-wrap' }, log, resumeBtn, toastEl), topicPanel, chatForm),
       dock,
     ),
   );
 
   // ---------- controls disclosure ----------
   const setPanelOpen = (open: boolean, persist = true) => {
+    if (open) setTopicOpen(false);
     moreBtn.setAttribute('aria-expanded', String(open));
     panel.classList.toggle('is-open', open);
     panel.inert = !open;
@@ -237,6 +267,65 @@ export const mount: MountFn = (root, { slug, signal }) => {
     setPanelOpen(false);
     moreBtn.focus();
   }, { signal });
+  // Topic picker: one disclosure open at a time, so the bottom of the screen never stacks up.
+  function setTopicOpen(open: boolean) {
+    if (open && panel.classList.contains('is-open')) setPanelOpen(false, false);
+    topicBtn.setAttribute('aria-expanded', String(open));
+    topicPanel.classList.toggle('is-open', open);
+    topicPanel.inert = !open;
+  }
+  topicBtn.addEventListener('click', () => {
+    const open = !topicPanel.classList.contains('is-open');
+    setTopicOpen(open);
+    // Mouse/keyboard: put the cursor in the field. Touch: don't pop the keyboard over the suggestions.
+    if (open && matchMedia('(pointer: fine)').matches) urlInput.focus();
+  }, { signal });
+  topicPanel.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    setTopicOpen(false);
+    topicBtn.focus();
+  }, { signal });
+  setTopicOpen(false);
+
+  // Field buttons: clear (only when there's something to clear) and paste.
+  const syncClear = () => (clearBtn.hidden = !urlInput.value);
+  urlInput.addEventListener('input', syncClear, { signal });
+  clearBtn.addEventListener('click', () => {
+    urlInput.value = '';
+    syncClear();
+    urlInput.focus();
+  }, { signal });
+  pasteBtn.addEventListener('click', async () => {
+    if (!navigator.clipboard?.readText) {
+      toast(TriangleAlert, 'Paste isn’t available here – long-press the field');
+      urlInput.focus();
+      return;
+    }
+    setBusy(pasteBtn, true);
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (!text) {
+        toast(ClipboardPaste, 'Clipboard is empty');
+        return;
+      }
+      urlInput.value = text;
+      syncClear();
+      urlInput.focus();
+      // The field flashes so the new value is noticed.
+      urlInput.parentElement!.classList.remove('is-filled');
+      void urlInput.offsetWidth;
+      urlInput.parentElement!.classList.add('is-filled');
+    } catch {
+      toast(TriangleAlert, 'Couldn’t read the clipboard – long-press the field to paste');
+    } finally {
+      setBusy(pasteBtn, false);
+    }
+  }, { signal });
+
+  // Send is an icon inside the chat field; it lights up once there's something to send.
+  chatInput.addEventListener('input', () => (sendBtn.disabled = !chatInput.value.trim()), { signal });
+
   const syncSummary = () => {
     moreSummary.textContent = `${settings.speed}× · ${CHATTER[settings.chatter]?.label ?? ''}`;
   };
@@ -249,19 +338,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       h(
         'li',
         { class: 'wc-system wc-welcome' },
-        h('span', {}, 'Welcome! Paste a Wikipedia link up top, or try one of these:'),
-        h(
-          'span',
-          { class: 'wc-examples' },
-          ...EXAMPLES.map((t) => {
-            const chip: HTMLButtonElement = h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t, chip) }, t);
-            return chip;
-          }),
-          (() => {
-            const chip: HTMLButtonElement = h('button', { class: 'wc-chip wc-chip-random', type: 'button', onclick: () => loadRandom(chip) }, icon(Dices, 16), 'Surprise me');
-            return chip;
-          })(),
-        ),
+        h('span', {}, 'Welcome! Chat reads Wikipedia with you, one sentence at a time. Pick a topic below to go live.'),
         h('span', { class: 'wc-keys' }, 'Space play/pause · → next · [ ] speed · R restart'),
       ),
     );
@@ -630,7 +707,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
       article = a;
       cursor = 0;
       lastSentence = '';
-      urlInput.value = a.url;
+      urlInput.value = '';
+      syncClear();
+      loadLabel.textContent = 'Switch topic';
       titleEl.textContent = a.title;
       descEl.textContent = a.description ?? `${a.sentences.length} sentences across ${a.sections.length} sections`;
       avatar.style.backgroundImage = a.thumbnail ? `url("${a.thumbnail}")` : '';
@@ -652,6 +731,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       resumeBtn.hidden = true;
       system(Radio, `Welcome to the chat room! Today's stream: ${a.title}`);
       ok = true;
+      setTopicOpen(false);
       // New stream arrives: header content animates in.
       stream.classList.remove('is-fresh');
       void stream.offsetWidth;
@@ -659,6 +739,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     } catch (err) {
       if (ctl.signal.aborted) return;
       system(TriangleAlert, err instanceof Error ? err.message : 'Something went wrong.', 'warn');
+      setTopicOpen(true); // let them try something else straight away
     } finally {
       signal.removeEventListener('abort', onAbort);
       if (loadCtl === ctl) {
@@ -753,6 +834,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = '';
+    sendBtn.disabled = true;
     post(me, text, 'mine');
     stickToBottom = true;
     scrollToBottom();
@@ -785,7 +867,10 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const query = new URLSearchParams(location.hash.split('?')[1] ?? '');
   const initial = query.get('article') ?? query.get('url');
   if (initial) load(initial);
-  else showWelcome();
+  else {
+    showWelcome();
+    setTopicOpen(true);
+  }
 
   return () => {
     playing = false;
