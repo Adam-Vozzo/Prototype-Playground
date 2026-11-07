@@ -1,5 +1,9 @@
 /* Wiki Chat – all classes prefixed wc- ; injected on mount, removed on unmount.
-   Layout: compact icon toolbar on top, chat fills the rest of the screen. */
+   Layout (DESIGN.md §2 thumb reach, §4 disclosure):
+     header  – what's on air + article box
+     chat    – log fills the screen, chat box underneath
+     dock    – player row (play/pause, next, seek, Controls) pinned to the bottom;
+               the Controls panel expands upward from it as a settings list. */
 
 .wc {
   --wc-bg: #0e0e10;
@@ -19,17 +23,17 @@
   font-size: 14px;
 }
 
-/* ---------- toolbar ---------- */
+/* ---------- header ---------- */
 .wc-top {
   flex: none;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
   background: var(--wc-panel);
   border-bottom: 1px solid var(--wc-line);
 }
-.wc-bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
 
 .wc-stream { flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .wc-avatar {
@@ -156,8 +160,18 @@
 }
 .wc-btn:active:not(:disabled), .wc-icon:active:not(:disabled), .wc-more:active, .wc-chip:active { transform: scale(0.96); }
 
-/* ---------- transport row (always visible) ---------- */
-.wc-transport { display: flex; align-items: center; gap: var(--gap-tap); }
+/* ---------- dock: player row + controls panel ---------- */
+.wc-dock {
+  flex: none;
+  background: var(--wc-panel);
+  border-top: 1px solid var(--wc-line);
+}
+.wc-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-tap);
+  padding: 8px max(14px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+}
 .wc-progress { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .wc-seek {
   flex: 1;
@@ -188,23 +202,23 @@
 }
 .wc-more[aria-expanded='true'] { background: rgba(145, 71, 255, 0.22); border-color: rgba(191, 148, 255, 0.55); }
 .wc-more-summary { font-weight: 500; font-size: 12px; color: var(--wc-muted); font-variant-numeric: tabular-nums; }
+/* Chevron points the way the panel will move: up to open, down to close. */
 .wc-chevron {
   width: 8px;
   height: 8px;
-  margin: -3px 2px 0 0;
+  margin: 4px 2px 0 0;
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
+  transform: rotate(-135deg);
   transition: transform var(--dur-3) var(--ease-out), margin var(--dur-3) var(--ease-out);
 }
-.wc-more[aria-expanded='true'] .wc-chevron { transform: rotate(-135deg); margin-top: 4px; }
+.wc-more[aria-expanded='true'] .wc-chevron { transform: rotate(45deg); margin-top: -3px; }
 
-/* ---------- controls panel (accordion) ---------- */
-/* Animate the container's height via grid rows (0fr → 1fr) – no measuring, interruptible. */
+/* Panel: grid rows 0fr → 1fr animates height without measuring, and is interruptible.
+   It sits above the player row, so the Controls button never moves under your finger. */
 .wc-panel {
   display: grid;
   grid-template-rows: 0fr;
-  margin: 0 -14px -10px;
   transition: grid-template-rows var(--dur-3) var(--ease-out);
 }
 .wc-panel.is-open { grid-template-rows: 1fr; }
@@ -216,40 +230,53 @@
   transition: opacity var(--dur-2) var(--ease-in);
 }
 .wc-panel.is-open .wc-panel-clip {
-  max-height: min(60dvh, 520px);
+  max-height: min(60dvh, 560px);
   overflow-y: auto;
   overscroll-behavior: contain;
   opacity: 1;
   transition: opacity var(--dur-3) var(--ease-out);
 }
 .wc-panel-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 14px 24px;
-  padding: 14px 14px 16px;
-  border-top: 1px solid var(--wc-line);
+  container-type: inline-size;
+  padding: 4px max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--wc-line);
 }
 
-.wc-group { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.wc-group-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--wc-muted);
+/* Settings list: every row is "label … control", same height, same divider. */
+.wc-settings { display: grid; column-gap: 40px; }
+@container (min-width: 760px) { .wc-settings { grid-template-columns: 1fr 1fr; } }
+.wc-settings-col { display: flex; flex-direction: column; min-width: 0; }
+.wc-setting {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--wc-line);
 }
-.wc-row { display: flex; flex-wrap: wrap; gap: var(--gap-tap); }
-.wc-row-end { align-items: flex-end; }
-.wc-row-end .wc-field { flex: 1 1 160px; }
-.wc-btn-labelled { justify-content: flex-start; }
+.wc-setting-label { flex: none; display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 500; }
+.wc-setting-control { flex: 0 1 320px; min-width: 0; }
+.wc-keyhint {
+  font: 11px ui-monospace, monospace;
+  color: #8a8a96;
+  padding: 1px 5px;
+  border: 1px solid var(--wc-line);
+  border-radius: 4px;
+}
+/* Phones: the control takes all the room next to its label; hide the desktop-only key hint. */
+@container (max-width: 520px) {
+  .wc-setting--wide .wc-setting-control { flex: 1 1 auto; }
+  .wc-keyhint { display: none; }
+}
+/* Very narrow: wide controls drop under their label. */
+@container (max-width: 339px) {
+  .wc-setting--wide { flex-direction: column; align-items: stretch; }
+  .wc-setting--wide .wc-setting-control { flex: none; width: 100%; }
+}
 
-.wc-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.wc-field-label { padding: 0; font-size: 13px; color: var(--wc-text); display: flex; align-items: baseline; gap: 8px; }
-.wc-keyhint { font-size: 11px; color: #6e6e7a; font-family: ui-monospace, monospace; }
 .wc-select {
   min-height: var(--tap);
-  width: 100%;
   font: inherit;
   font-size: 16px;
   color: var(--wc-text);
@@ -288,22 +315,14 @@
 .wc-seg-opt input:checked + span { background: var(--wc-brand); color: #fff; }
 .wc-seg-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
 
-/* Switch on a native checkbox. */
-.wc-switch {
-  position: relative;
-  min-height: var(--tap);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  cursor: pointer;
-}
+/* Switch on a native checkbox; the whole row is the target. */
+.wc-switch { position: relative; cursor: pointer; }
 .wc-switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .wc-switch-track {
   flex: none;
   position: relative;
-  width: 40px;
-  height: 24px;
+  width: 44px;
+  height: 26px;
   border-radius: 999px;
   background: #3d3d44;
   transition: background-color var(--dur-2) var(--ease-out);
@@ -313,15 +332,21 @@
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
   transition: transform var(--dur-2) var(--ease-out);
 }
 .wc-switch-input:checked ~ .wc-switch-track { background: var(--wc-brand); }
-.wc-switch-input:checked ~ .wc-switch-track::after { transform: translateX(16px); }
+.wc-switch-input:checked ~ .wc-switch-track::after { transform: translateX(18px); }
 .wc-switch-input:focus-visible ~ .wc-switch-track { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Actions sit last – closest to the player row and your thumb. */
+.wc-actions { display: flex; flex-wrap: wrap; gap: var(--gap-tap); padding-top: 12px; }
+.wc-actions .wc-btn { flex: 1 1 0; padding: 0 10px; }
+@container (min-width: 760px) { .wc-actions .wc-btn { flex: 0 0 auto; padding: 0 14px; } }
+@container (max-width: 520px) { .wc-wide-only { display: none; } }
 
 /* ---------- chat ---------- */
 .wc-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -345,16 +370,18 @@
 .wc-name { font-weight: 700; }
 .wc-colon { color: var(--wc-text); }
 .wc-badge {
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
-  margin-right: 3px;
-  border-radius: 3px;
-  font-size: 11px;
-  vertical-align: -3px;
+  margin-right: 4px;
+  border-radius: 4px;
+  vertical-align: -4px; /* box centred on the x-height of 14px text */
   color: #fff;
 }
+.wc-badge svg { width: 12px; height: 12px; fill: currentColor; display: block; }
+.wc-badge-host { background: var(--wc-live); }
 .wc-badge-mod { background: #00ad03; }
 .wc-badge-vip { background: #e005b9; }
 .wc-badge-sub { background: #8205b4; }
@@ -403,8 +430,8 @@
   flex: none;
   display: flex;
   gap: 8px;
-  padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
-  background: var(--wc-panel);
+  padding: 8px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
+  background: var(--wc-bg);
   border-top: 1px solid var(--wc-line);
 }
 
@@ -421,8 +448,7 @@
   border: 1px solid var(--wc-line);
   border-radius: 10px;
 }
-.wc-examples { display: flex; flex-wrap: wrap; gap: 6px; }
-.wc-examples { gap: var(--gap-tap); }
+.wc-examples { display: flex; flex-wrap: wrap; gap: var(--gap-tap); }
 .wc-chip {
   min-height: var(--tap);
   font: inherit;
@@ -448,16 +474,15 @@
 }
 
 @media (max-width: 700px) {
-  .wc-top { padding: 8px 10px; gap: 8px; }
+  .wc-top { padding-top: 8px; padding-bottom: 8px; }
   .wc-form { flex-basis: 100%; max-width: none; }
   .wc-stream-sub .wc-desc { display: none; }
   .wc-sub-progress { display: inline; }
   .wc-progress-label { display: none; }
-  .wc-panel { margin: 0 -10px -8px; }
-  /* Keep some chat visible while the panel is open; drop group headings (fields are labelled). */
-  .wc-panel.is-open .wc-panel-clip { max-height: 46dvh; }
-  .wc-panel-body { gap: 12px; padding: 12px 12px 14px; }
-  .wc-group-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .wc-transport, .wc-panel-body, .wc-chat-form { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  .wc-panel.is-open .wc-panel-clip { max-height: 50dvh; }
+  .wc-setting { min-height: 48px; padding: 4px 0; }
+  .wc-actions { padding-top: 10px; }
   .wc-keys { display: none; }
   .wc-msg { padding: 4px 12px; }
 }
