@@ -5,6 +5,8 @@
   (that would pull it into the main bundle). Only `meta.ts` is eager, and it must stay import-free
   apart from types.
 - Prototype CSS: `import css from './style.css?inline'` + `useStyles(css, signal)`, classes prefixed.
+- **UI work follows `DESIGN.md`** (touch targets ≥ 24px, ideally 40px; visible labels over icon-only
+  rows; motion tokens; reduced motion). Run its §11 checklist before merging any UI change.
 - Clean up everything in `mount`'s return value or via `signal`; the host mounts/unmounts on navigation.
 - Verify with `npm run build` (runs `tsc --noEmit` then `vite build`) and check the chunk list:
   the main `index-*.js` should stay small.

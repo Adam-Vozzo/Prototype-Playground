@@ -93,34 +93,39 @@ export const mount: MountFn = (root, { signal }) => {
   scene.add(dome.group);
 
   // ---------- UI ----------
-  // Icon + label; the label hides on narrow screens to keep the scene visible.
+  // Icon + visible label at every size (DESIGN.md §3). Two kinds of button:
+  //  - action: label says what will happen, no "on" styling (Lift / Lower dome)
+  //  - toggle: fixed label + aria-pressed (Night, Auto-rotate, Wipe glass)
   const btn = (icon: string, label: string, title: string) =>
-    h('button', { class: 'gg-btn', type: 'button', title, 'aria-label': label },
+    h('button', { class: 'gg-btn', type: 'button', title },
       h('span', { class: 'gg-ico', 'aria-hidden': 'true' }, icon),
       h('span', { class: 'gg-label' }, label));
+  const toggleBtn = (icon: string, label: string, title: string) => {
+    const b = btn(icon, label, title);
+    b.setAttribute('aria-pressed', 'false');
+    return b;
+  };
   const relabel = (el: HTMLElement, icon: string, label: string) => {
     el.querySelector('.gg-ico')!.textContent = icon;
     el.querySelector('.gg-label')!.textContent = label;
-    el.setAttribute('aria-label', label);
   };
+  const setPressed = (el: HTMLElement, on: boolean) => el.setAttribute('aria-pressed', String(on));
+
   const liftBtn = btn('⬆', 'Lift dome', 'Lift the glass off (L)');
-  const nightBtn = btn('🌙', 'Night', 'Toggle day / night (N)');
-  const rotateBtn = btn('⟳', 'Auto-rotate', 'Toggle auto-rotate (A)');
-  const wipeBtn = btn('🧽', 'Wipe glass', 'Drag on the dome to clear the frost (W)');
-  rotateBtn.classList.add('is-on');
+  const nightBtn = toggleBtn('🌙', 'Night', 'Night time (N)');
+  const rotateBtn = toggleBtn('⟳', 'Auto-rotate', 'Slowly turn the garden (A)');
+  const wipeBtn = toggleBtn('🧽', 'Wipe glass', 'Drag on the dome to clear the frost (W)');
   const frost = h('input', { type: 'range', min: 0, max: 100, value: 90, 'aria-label': 'Frost amount' });
-  const hint = h('p', { class: 'gg-hint' }, 'Drag to orbit · scroll / pinch to zoom');
+  const frostValue = h('output', { class: 'gg-frost-value', 'aria-hidden': 'true' });
+  const hint = h('p', { class: 'gg-hint', role: 'status' });
 
   wrap.append(
+    hint,
     h(
       'div',
-      { class: 'gg-panel' },
-      liftBtn,
-      nightBtn,
-      rotateBtn,
-      wipeBtn,
-      h('label', { class: 'gg-frost' }, h('span', {}, 'Frost'), frost),
-      hint,
+      { class: 'gg-panel', role: 'group', 'aria-label': 'Garden controls' },
+      h('div', { class: 'gg-buttons' }, liftBtn, nightBtn, rotateBtn, wipeBtn),
+      h('label', { class: 'gg-frost' }, h('span', {}, 'Frost'), frost, frostValue),
     ),
   );
 
@@ -131,42 +136,45 @@ export const mount: MountFn = (root, { signal }) => {
   let nightT = 0;
   let wiping = false;
 
-  const toggle = (el: HTMLElement, on: boolean) => el.classList.toggle('is-on', on);
-
   liftBtn.addEventListener('click', () => {
     lifted = !lifted;
     relabel(liftBtn, lifted ? '⬇' : '⬆', lifted ? 'Lower dome' : 'Lift dome');
-    toggle(liftBtn, lifted);
+    liftBtn.title = lifted ? 'Put the glass back (L)' : 'Lift the glass off (L)';
   }, { signal });
   const setNight = (on: boolean, instant = false) => {
     night = on;
     if (instant) nightT = on ? 1 : 0;
-    relabel(nightBtn, on ? '☀' : '🌙', on ? 'Day' : 'Night');
-    toggle(nightBtn, on);
+    setPressed(nightBtn, on);
   };
   nightBtn.addEventListener('click', () => setNight(!night), { signal });
-  rotateBtn.addEventListener('click', () => {
-    controls.autoRotate = !controls.autoRotate;
-    toggle(rotateBtn, controls.autoRotate);
-  }, { signal });
+  const setRotate = (on: boolean) => {
+    controls.autoRotate = on;
+    setPressed(rotateBtn, on);
+  };
+  rotateBtn.addEventListener('click', () => setRotate(!controls.autoRotate), { signal });
   const setWiping = (on: boolean) => {
     wiping = on;
-    toggle(wipeBtn, on);
+    setPressed(wipeBtn, on);
     wrap.classList.toggle('is-wiping', on);
     hint.textContent = on
       ? 'Drag on the glass to wipe it · drag elsewhere to orbit'
-      : 'Drag to orbit · scroll / pinch to zoom';
+      : 'Drag to orbit · pinch or scroll to zoom';
+    // On phones the hint floats over the scene; bring it back when the mode changes.
+    wrap.classList.remove('has-interacted');
   };
   wipeBtn.addEventListener('click', () => setWiping(!wiping), { signal });
   const applyFrost = () => {
     dome.material.roughness = (Number(frost.value) / 100) * 0.9;
+    frostValue.textContent = `${frost.value}%`;
   };
   frost.addEventListener('input', applyFrost, { signal });
   applyFrost();
 
   // Defaults: start at night (fireflies out) with the wipe tool ready.
+  // Ambient auto-rotation stays off for people who asked for reduced motion.
   setNight(true, true);
   setWiping(true);
+  setRotate(!matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   document.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -193,6 +201,7 @@ export const mount: MountFn = (root, { signal }) => {
   // Capture phase so we can claim the gesture before OrbitControls sees it.
   // Presses that miss the glass fall through, so you can still orbit in wipe mode.
   renderer.domElement.addEventListener('pointerdown', (e) => {
+    wrap.classList.add('has-interacted');
     if (!wiping || !paintAt(e)) return;
     e.stopImmediatePropagation();
     painting = true;

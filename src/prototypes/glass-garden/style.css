@@ -1,21 +1,21 @@
-/* Glass Garden – classes prefixed gg- ; injected on mount, removed on unmount. */
+/* Glass Garden – classes prefixed gg- ; injected on mount, removed on unmount.
+   Follows DESIGN.md: 40px+ targets, visible labels, state toggles via aria-pressed. */
 
 .gg { position: absolute; inset: 0; overflow: hidden; }
 .gg-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .gg.is-wiping .gg-canvas { cursor: crosshair; }
 
 .gg-panel {
-  /* Single-row control bar pinned along the bottom edge. */
+  /* Control bar pinned along the bottom edge (thumb reach on phones). */
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
-  background: rgba(14, 18, 26, 0.6);
+  gap: 8px 16px;
+  padding: 10px max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(14, 18, 26, 0.72);
   backdrop-filter: blur(12px) saturate(1.3);
   -webkit-backdrop-filter: blur(12px) saturate(1.3);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
@@ -23,8 +23,12 @@
   font-size: 13px;
   user-select: none;
 }
+.gg-buttons { display: flex; gap: var(--gap-tap); flex: none; }
+
 .gg-btn {
   flex: none;
+  min-height: var(--tap);
+  min-width: var(--tap);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -35,38 +39,89 @@
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 9px;
-  padding: 7px 11px;
+  border-radius: 10px;
+  padding: 0 12px;
   cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
 }
-.gg-btn:hover { background: rgba(255, 255, 255, 0.18); }
-.gg-btn.is-on { background: rgba(160, 220, 190, 0.35); border-color: rgba(190, 240, 210, 0.5); }
+.gg-ico { font-size: 16px; line-height: 1; }
+@media (hover: hover) { .gg-btn:hover { background: rgba(255, 255, 255, 0.18); } }
+.gg-btn:active { transform: scale(0.96); }
+/* State toggles: on = accent fill + check-style border, off = neutral (never faded). */
+.gg-btn[aria-pressed='true'] { background: rgba(160, 220, 190, 0.32); border-color: rgba(190, 240, 210, 0.7); }
+@media (hover: hover) { .gg-btn[aria-pressed='true']:hover { background: rgba(160, 220, 190, 0.42); } }
+
 .gg-frost {
-  flex: 1 1 140px;
-  max-width: 300px;
+  flex: 1 1 160px;
+  max-width: 320px;
   min-width: 0;
+  min-height: var(--tap);
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: 8px;
 }
-.gg-frost input { flex: 1; min-width: 60px; accent-color: #a8e6c4; }
+.gg-frost input {
+  flex: 1;
+  min-width: 60px;
+  height: var(--tap); /* the whole 40px box is the hit area, not the 4px track */
+  margin: 0;
+  accent-color: #a8e6c4;
+  cursor: pointer;
+}
+.gg-frost-value { min-width: 4ch; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; }
+
 .gg-hint {
-  margin: 0 0 0 auto;
-  font-size: 12px;
-  opacity: 0.7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(var(--tap) + 32px + max(0px, env(safe-area-inset-bottom) - 10px));
+  margin: 0;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #eef3fb;
+  background: rgba(14, 18, 26, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  pointer-events: none;
+  transition: opacity var(--dur-3) var(--ease-out), transform var(--dur-3) var(--ease-out);
+}
+/* Once you've touched the scene the hint has done its job – fade it (exit is faster). */
+.gg.has-interacted .gg-hint {
+  opacity: 0;
+  transform: translateY(4px);
+  transition-duration: var(--dur-2);
+  transition-timing-function: var(--ease-in);
 }
 
-@media (max-width: 900px) {
-  .gg-hint { display: none; }
-}
-@media (max-width: 640px) {
-  .gg-panel { gap: 6px; padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-  .gg-label { display: none; }
-  .gg-btn { padding: 7px 10px; font-size: 15px; }
-  .gg-frost { margin-left: 4px; gap: 6px; }
+@media (max-width: 720px) {
+  /* Two rows: labelled buttons (icon over label), then the frost slider. */
+  .gg-panel { flex-wrap: wrap; gap: 6px; padding-top: 8px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  .gg-buttons { flex: 1 1 100%; gap: 6px; }
+  .gg-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: var(--tap-lg);
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 2px;
+    font-size: 12px;
+  }
+  .gg-ico { font-size: 18px; }
+  .gg-frost { flex-basis: 100%; max-width: none; padding: 0 4px; }
+  .gg-hint {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: calc(var(--tap-lg) + var(--tap) + 40px + max(0px, env(safe-area-inset-bottom) - 10px));
+    white-space: nowrap;
+    max-width: calc(100% - 24px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gg.has-interacted .gg-hint { transform: translate(-50%, 4px); }
 }

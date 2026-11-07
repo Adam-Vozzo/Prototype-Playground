@@ -10,8 +10,8 @@ deployed by `.github/workflows/deploy.yml`.
 
 | Prototype | What it is |
 | --- | --- |
-| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, full-screen under a compact icon toolbar (play/pause, step, restart, section, seek, speed, chatter level, highlight & section toggles). Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
-| 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, switch to day, adjust the frost. |
+| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, full-screen. Play/pause, next and seek are always visible; a labelled **Controls** accordion holds restart, sections, reading speed, chat activity, display switches and random/source links. Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
+| 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, toggle night and auto-rotate, adjust the frost. |
 
 ## Getting started
 
@@ -25,6 +25,14 @@ npm run preview    # serve the production build
 The build uses a relative base and hash routing, so `dist/` can be dropped on
 any static host under any path. GitHub Pages deploys need
 **Settings → Pages → Source: GitHub Actions**.
+
+## Design standards
+
+[`DESIGN.md`](DESIGN.md) sets the bar for interaction design, UX and motion:
+touch targets (24px minimum, 40px default), labels vs icons, toggle semantics,
+progressive disclosure, feedback timing, motion durations and easing, reduced
+motion and a review checklist. Shared tokens (`--tap`, `--dur-*`, `--ease-*`)
+live in `src/shell/shell.css` and can be used from any prototype's CSS.
 
 ## Adding a prototype
 
