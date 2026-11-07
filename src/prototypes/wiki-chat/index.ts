@@ -1,4 +1,9 @@
+import {
+  ArrowDown, BookOpen, ChevronUp, Dices, ExternalLink, FastForward, Hourglass, Megaphone,
+  Pause, PartyPopper, Play, Radio, RotateCcw, Search, SkipForward, TriangleAlert, User,
+} from 'lucide';
 import { h, useStyles } from '../../lib/dom';
+import { icon, setIcon, type IconNode } from '../../lib/icon';
 import type { MountFn } from '../../types';
 import css from './style.css?inline';
 import { BADGES, createCrowd, pick, type Badge, type Chatter } from './chatters';
@@ -7,10 +12,10 @@ import { fetchArticle, fetchRandomTitle, parseArticleRef, type Article } from '.
 
 const SPEEDS = [0.5, 1, 1.5, 2, 3, 5];
 const CHATTER = [
-  { label: 'Off', icon: '🔇', range: null },
-  { label: 'Chill', icon: '💬', range: [1800, 4500] },
-  { label: 'Busy', icon: '🗨️', range: [450, 1600] },
-  { label: 'Chaos', icon: '🔥', range: [70, 380] },
+  { label: 'Off', range: null },
+  { label: 'Chill', range: [1800, 4500] },
+  { label: 'Busy', range: [450, 1600] },
+  { label: 'Chaos', range: [70, 380] },
 ] as const;
 const MAX_MESSAGES = 250;
 const EXAMPLES = ['Octopus', 'Great Emu War', 'Toast', 'Voyager 1', 'Honey badger', 'Tardigrade'];
@@ -54,17 +59,16 @@ export const mount: MountFn = (root, { slug, signal }) => {
   // Top: what's on air + the article box. Middle: chat. Bottom (thumb reach): the chat
   // box, then a player dock – play/pause, next, position and a labelled "Controls"
   // button that expands a settings list upward, right above the dock (DESIGN.md §2, §4).
-  const iconBtn = (icon: string, label: string, disabled = false) =>
-    h('button', { class: 'wc-icon', type: 'button', title: label, 'aria-label': label, disabled }, icon);
-  const setIcon = (btn: HTMLElement, icon: string, label: string) => {
-    btn.textContent = icon;
+  const iconBtn = (node: IconNode, label: string, disabled = false) =>
+    h('button', { class: 'wc-icon', type: 'button', title: label, 'aria-label': label, disabled }, icon(node, 20));
+  const relabel = (btn: HTMLElement, node: IconNode, label: string) => {
+    setIcon(btn, node, 20);
     btn.title = label;
     btn.setAttribute('aria-label', label);
   };
-  /** Text button with a leading glyph – used inside the controls panel. */
-  const labelBtn = (icon: string, label: string | Node, title?: string) =>
-    h('button', { class: 'wc-btn wc-btn-labelled', type: 'button', title },
-      h('span', { 'aria-hidden': 'true' }, icon), label);
+  /** Text button with a leading Lucide icon – used inside the controls panel. */
+  const labelBtn = (node: IconNode, label: string | Node, title?: string) =>
+    h('button', { class: 'wc-btn wc-btn-labelled', type: 'button', title }, icon(node), label);
   /** Words dropped on phones so the action row fits on one line ("Random article" → "Random"). */
   const wide = (text: string) => h('span', { class: 'wc-wide-only' }, text);
   let uid = 0;
@@ -109,9 +113,10 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const loadBtn = h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Go live');
   const form = h('form', { class: 'wc-form' }, urlInput, loadBtn);
 
-  const avatar = h('div', { class: 'wc-avatar', 'aria-hidden': 'true' }, '📖');
+  const avatar = h('div', { class: 'wc-avatar', 'aria-hidden': 'true' }, icon(BookOpen, 18));
   const liveBadge = h('span', { class: 'wc-live' }, 'OFFLINE');
-  const viewerEl = h('span', { class: 'wc-viewers' });
+  const viewerCount = h('span', {});
+  const viewerEl = h('span', { class: 'wc-viewers', hidden: true }, icon(User, 14), viewerCount);
   const titleEl = h('h2', { class: 'wc-title' }, 'Nothing on air');
   const sectionEl = h('span', { class: 'wc-section' });
   const subProgress = h('span', { class: 'wc-sub-progress' });
@@ -129,9 +134,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
   );
 
   // --- always visible: transport ---
-  const playBtn = iconBtn('▶', 'Play (Space)', true);
+  const playBtn = iconBtn(Play, 'Play (Space)', true);
   playBtn.classList.add('wc-play');
-  const stepBtn = iconBtn('⏭', 'Next sentence (→)', true);
+  const stepBtn = iconBtn(SkipForward, 'Next sentence (→)', true);
   const seek = h('input', { class: 'wc-seek', type: 'range', min: 0, max: 0, value: 0, 'aria-label': 'Article position', disabled: true });
   const progressLabel = h('span', { class: 'wc-progress-label', 'aria-hidden': 'true' }, '0 / 0');
   const panelId = `wc-panel-${Math.random().toString(36).slice(2, 7)}`;
@@ -141,7 +146,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     { class: 'wc-more', type: 'button', 'aria-expanded': 'false', 'aria-controls': panelId },
     h('span', {}, 'Controls'),
     moreSummary,
-    h('span', { class: 'wc-chevron', 'aria-hidden': 'true' }),
+    icon(ChevronUp, 18, 'wc-chevron'),
   );
 
   // --- one tap away: settings list + actions, expanding upward above the dock ---
@@ -151,11 +156,11 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const chatterCtl = segmented('Chat activity', CHATTER.map((c, i) => ({ value: i, label: c.label })));
   const highlightCtl = switchCtl('Highlight article lines');
   const headingsCtl = switchCtl('Announce new sections');
-  const restartBtn = labelBtn('↺', 'Restart', 'Restart from the top (R)');
+  const restartBtn = labelBtn(RotateCcw, 'Restart', 'Restart from the top (R)');
   restartBtn.disabled = true;
-  const randomBtn = labelBtn('🎲', h('span', {}, 'Random', wide(' article')), 'Load a random article');
+  const randomBtn = labelBtn(Dices, h('span', {}, 'Random', wide(' article')), 'Load a random article');
   const sourceLink = h('a', { class: 'wc-btn wc-btn-labelled', target: '_blank', rel: 'noopener', hidden: true, title: 'Open this article on Wikipedia' },
-    h('span', { 'aria-hidden': 'true' }, '↗'), h('span', {}, wide('Open on '), 'Wikipedia'));
+    icon(ExternalLink), h('span', {}, wide('Open on '), 'Wikipedia'));
 
   const panelBody = h(
     'div',
@@ -174,7 +179,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const header = h('header', { class: 'wc-top' }, stream, form);
 
   const log = h('ol', { class: 'wc-log', role: 'log', 'aria-label': 'Chat messages' });
-  const resumeBtn = h('button', { class: 'wc-resume', type: 'button', hidden: true }, 'Chat paused · jump to latest ↓');
+  const resumeBtn = h('button', { class: 'wc-resume', type: 'button', hidden: true }, 'Chat paused · jump to latest', icon(ArrowDown, 16));
   const chatInput = h('input', { class: 'wc-chat-input', type: 'text', enterkeyhint: 'send', placeholder: 'Send a message', maxlength: 300, 'aria-label': 'Send a message' });
   const chatForm = h('form', { class: 'wc-chat-form' }, chatInput, h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Chat'));
 
@@ -236,7 +241,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
           'span',
           { class: 'wc-examples' },
           ...EXAMPLES.map((t) => h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t) }, t)),
-          h('button', { class: 'wc-chip wc-chip-random', type: 'button', onclick: () => randomBtn.click() }, '🎲 Surprise me'),
+          h('button', { class: 'wc-chip wc-chip-random', type: 'button', onclick: () => randomBtn.click() }, icon(Dices, 16), 'Surprise me'),
         ),
         h('span', { class: 'wc-keys' }, 'Space play/pause · → next · [ ] speed · R restart'),
       ),
@@ -271,15 +276,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
     scrollToBottom();
   }, { signal });
 
-  const SVG = 'http://www.w3.org/2000/svg';
   function badge(b: Badge) {
-    const svg = document.createElementNS(SVG, 'svg');
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS(SVG, 'path');
-    path.setAttribute('d', BADGES[b].path);
-    svg.append(path);
-    return h('span', { class: `wc-badge wc-badge-${b}`, title: BADGES[b].label, role: 'img', 'aria-label': BADGES[b].label }, svg);
+    return h('span', { class: `wc-badge wc-badge-${b}`, title: BADGES[b].label, role: 'img', 'aria-label': BADGES[b].label }, icon(BADGES[b].icon, 12));
   }
 
   function post(who: Chatter, text: string, kind: 'chat' | 'article' | 'mine' = 'chat') {
@@ -295,8 +293,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
     append(li);
   }
 
-  function system(text: string, tone: 'info' | 'section' = 'info') {
-    append(h('li', { class: `wc-system wc-system-${tone}` }, text));
+  function system(node: IconNode, text: string, tone: 'info' | 'section' | 'warn' = 'info') {
+    append(h('li', { class: `wc-system wc-system-${tone}` }, icon(node, 16), h('span', {}, text)));
   }
 
   function append(li: HTMLElement) {
@@ -319,7 +317,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     const s = article.sentences[cursor];
     const prevSection = cursor > 0 ? article.sentences[cursor - 1].section : -1;
     if (s.section !== prevSection && s.section > 0 && settings.headings) {
-      system(`📢 Now reading: ${article.sections[s.section]}`, 'section');
+      system(Megaphone, `Now reading: ${article.sections[s.section]}`, 'section');
     }
     post(narrator, s.text, 'article');
     lastSentence = s.text;
@@ -331,7 +329,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   function finish() {
     setPlaying(false);
     if (!article) return;
-    system(`🎉 That's the whole article! ${article.sentences.length} messages of pure knowledge.`);
+    system(PartyPopper, `That's the whole article! ${article.sentences.length} messages of pure knowledge.`);
     if (!chatOn()) return;
     for (let i = 0; i < 4; i++) setTimeout(() => !signal.aborted && chatOn() && post(nextChatter(), pick(['GG', 'gg', 'GG WP', 'o7', 'W stream', 'again!!', 'that was beautiful 😭'])), 150 + i * 180);
   }
@@ -365,17 +363,17 @@ export const mount: MountFn = (root, { slug, signal }) => {
     clearTimeout(viewerTimer);
     if (!playing) return;
     viewers = Math.max(12, Math.round(viewers * (0.985 + Math.random() * 0.035)));
-    viewerEl.textContent = `👤 ${viewers.toLocaleString()}`;
+    viewerCount.textContent = viewers.toLocaleString();
     viewerTimer = window.setTimeout(driftViewers, 2500);
   }
 
   function setPlaying(on: boolean) {
     if (on && article && cursor >= article.sentences.length) {
       cursor = 0; // play after the end restarts
-      system('↺ Restarting from the top');
+      system(RotateCcw, 'Restarting from the top');
     }
     playing = on && !!article;
-    setIcon(playBtn, playing ? '⏸' : '▶', playing ? 'Pause (Space)' : 'Play (Space)');
+    relabel(playBtn, playing ? Pause : Play, playing ? 'Pause (Space)' : 'Play (Space)');
     playBtn.classList.toggle('is-on', playing);
     liveBadge.textContent = article ? (playing ? 'LIVE' : 'PAUSED') : 'OFFLINE';
     liveBadge.classList.toggle('is-live', playing);
@@ -392,7 +390,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   function jumpTo(index: number, announce = true) {
     if (!article) return;
     cursor = Math.max(0, Math.min(index, article.sentences.length - 1));
-    if (announce) system(`⏩ Jumped to “${article.sections[article.sentences[cursor].section]}”`);
+    if (announce) system(FastForward, `Jumped to “${article.sections[article.sentences[cursor].section]}”`);
     updateProgress();
     if (playing) scheduleSentence(300);
   }
@@ -411,12 +409,12 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   // ---------- loading ----------
   const retryNotice = (ms: number) =>
-    system(`⏳ Wikipedia is busy, retrying in ${Math.round(ms / 1000)}s…`);
+    system(Hourglass, `Wikipedia is busy, retrying in ${Math.round(ms / 1000)}s…`);
 
   async function load(input: string) {
     const ref = parseArticleRef(input);
     if (!ref) {
-      system('⚠️ That doesn’t look like a Wikipedia link.');
+      system(TriangleAlert, 'That doesn’t look like a Wikipedia link.', 'warn');
       return;
     }
     loadCtl?.abort();
@@ -427,7 +425,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     setPlaying(false);
     form.classList.add('is-loading');
     loadBtn.disabled = true;
-    system(`🔎 Fetching “${ref.title}”…`);
+    system(Search, `Fetching “${ref.title}”…`);
     try {
       const a = await fetchArticle(ref, ctl.signal, retryNotice);
       if (ctl.signal.aborted) return;
@@ -438,11 +436,11 @@ export const mount: MountFn = (root, { slug, signal }) => {
       titleEl.textContent = a.title;
       descEl.textContent = a.description ?? `${a.sentences.length} sentences across ${a.sections.length} sections`;
       avatar.style.backgroundImage = a.thumbnail ? `url("${a.thumbnail}")` : '';
-      avatar.textContent = a.thumbnail ? '' : '📖';
+      avatar.replaceChildren(...(a.thumbnail ? [] : [icon(BookOpen, 18)]));
       sourceLink.href = a.url;
       sourceLink.hidden = false;
       viewers = 300 + Math.round(Math.random() * 400 + a.sentences.length * 6);
-      viewerEl.textContent = `👤 ${viewers.toLocaleString()}`;
+      viewerCount.textContent = viewers.toLocaleString();
 
       sectionSelect.replaceChildren(
         ...a.sections.map((name, i) => h('option', { value: i }, i === 0 ? 'Introduction' : name)),
@@ -454,11 +452,11 @@ export const mount: MountFn = (root, { slug, signal }) => {
       log.replaceChildren();
       stickToBottom = true;
       resumeBtn.hidden = true;
-      system(`Welcome to the chat room! Today's stream: ${a.title}`);
+      system(Radio, `Welcome to the chat room! Today's stream: ${a.title}`);
       setPlaying(true);
     } catch (err) {
       if (ctl.signal.aborted) return;
-      system(`⚠️ ${err instanceof Error ? err.message : 'Something went wrong.'}`);
+      system(TriangleAlert, err instanceof Error ? err.message : 'Something went wrong.', 'warn');
     } finally {
       signal.removeEventListener('abort', onAbort);
       if (loadCtl === ctl) {
@@ -480,7 +478,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       const lang = parseArticleRef(urlInput.value)?.lang ?? article?.lang ?? 'en';
       load(`${lang}:${await fetchRandomTitle(lang, signal, retryNotice)}`);
     } catch (err) {
-      if (!signal.aborted) system(`⚠️ ${err instanceof Error ? err.message : 'Random failed.'}`);
+      if (!signal.aborted) system(TriangleAlert, err instanceof Error ? err.message : 'Random failed.', 'warn');
     }
   }, { signal });
 
@@ -492,7 +490,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
   restartBtn.addEventListener('click', () => {
     log.replaceChildren();
     jumpTo(0, false);
-    system('↺ Restarting from the top');
+    system(RotateCcw, 'Restarting from the top');
     if (!playing) setPlaying(true);
   }, { signal });
   sectionSelect.addEventListener('change', () => {

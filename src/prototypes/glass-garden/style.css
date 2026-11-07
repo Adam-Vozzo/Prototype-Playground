@@ -47,7 +47,6 @@
     border-color var(--dur-1) var(--ease-out),
     transform var(--dur-1) var(--ease-out);
 }
-.gg-ico { font-size: 16px; line-height: 1; }
 @media (hover: hover) { .gg-btn:hover { background: rgba(255, 255, 255, 0.18); } }
 .gg-btn:active { transform: scale(0.96); }
 /* State toggles: on = accent fill + check-style border, off = neutral (never faded). */
@@ -61,7 +60,7 @@
   min-height: var(--tap);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .gg-frost input {
   flex: 1;
@@ -111,7 +110,7 @@
     padding: 4px 2px;
     font-size: 12px;
   }
-  .gg-ico { font-size: 18px; }
+  .gg-ico { width: 20px; height: 20px; }
   .gg-frost { flex-basis: 100%; max-width: none; padding: 0 4px; }
   .gg-hint {
     left: 50%;

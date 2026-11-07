@@ -80,7 +80,8 @@
   background: #53535f;
 }
 .wc-live.is-live { background: var(--wc-live); }
-.wc-viewers { flex: none; font-size: 12px; color: #ff8280; font-variant-numeric: tabular-nums; }
+.wc-viewers { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: #ff8280; font-variant-numeric: tabular-nums; }
+.wc-viewers[hidden] { display: none; }
 
 .wc-sub-progress { flex: none; font-variant-numeric: tabular-nums; display: none; }
 .wc-sub-progress:empty { display: none !important; }
@@ -148,6 +149,8 @@
   cursor: pointer;
 }
 .wc-icon:disabled { opacity: 0.4; cursor: default; }
+/* Media transport icons are filled (DESIGN.md §3 Icons). */
+.wc-icon svg { fill: currentColor; }
 .wc-play:not(:disabled) { background: var(--wc-brand); }
 
 @media (hover: hover) {
@@ -203,16 +206,8 @@
 .wc-more[aria-expanded='true'] { background: rgba(145, 71, 255, 0.22); border-color: rgba(191, 148, 255, 0.55); }
 .wc-more-summary { font-weight: 500; font-size: 12px; color: var(--wc-muted); font-variant-numeric: tabular-nums; }
 /* Chevron points the way the panel will move: up to open, down to close. */
-.wc-chevron {
-  width: 8px;
-  height: 8px;
-  margin: 4px 2px 0 0;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(-135deg);
-  transition: transform var(--dur-3) var(--ease-out), margin var(--dur-3) var(--ease-out);
-}
-.wc-more[aria-expanded='true'] .wc-chevron { transform: rotate(45deg); margin-top: -3px; }
+.wc-chevron { transition: transform var(--dur-3) var(--ease-out); }
+.wc-more[aria-expanded='true'] .wc-chevron { transform: rotate(180deg); }
 
 /* Panel: grid rows 0fr → 1fr animates height without measuring, and is interruptible.
    It sits above the player row, so the Controls button never moves under your finger. */
@@ -380,7 +375,7 @@
   vertical-align: -4px; /* box centred on the x-height of 14px text */
   color: #fff;
 }
-.wc-badge svg { width: 12px; height: 12px; fill: currentColor; display: block; }
+.wc-badge svg { stroke-width: 2.5; }
 .wc-badge-host { background: var(--wc-live); }
 .wc-badge-mod { background: #00ad03; }
 .wc-badge-vip { background: #e005b9; }
@@ -393,10 +388,15 @@
 .wc-msg--mine { background: rgba(191, 148, 255, 0.08); }
 
 .wc-system {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 4px 16px;
   color: var(--wc-muted);
   font-style: italic;
 }
+.wc-system > svg { margin-top: 3px; } /* centre a 16px icon on the 22px first line */
+.wc-system-warn { color: #ffb4a8; }
 .wc-system-section {
   margin: 6px 10px;
   padding: 8px 12px;
@@ -423,6 +423,9 @@
   padding: 0 16px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   animation: wc-pop var(--dur-2) var(--ease-out);
 }
 .wc-resume:active { transform: translateX(-50%) scale(0.96); }
@@ -438,6 +441,7 @@
 
 .wc-welcome {
   display: flex;
+  align-items: stretch;
   flex-direction: column;
   gap: 10px;
   margin: 12px 20px;
@@ -451,6 +455,9 @@
 .wc-examples { display: flex; flex-wrap: wrap; gap: var(--gap-tap); }
 .wc-chip {
   min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: inherit;
   font-size: 14px;
   color: var(--wc-text);
@@ -469,7 +476,7 @@
 
 /* Touch screens: frequent controls get the larger target. */
 @media (pointer: coarse) {
-  .wc-icon { width: var(--tap-lg); height: var(--tap-lg); font-size: 19px; }
+  .wc-icon { width: var(--tap-lg); height: var(--tap-lg); }
   .wc-more { min-height: var(--tap-lg); }
 }
 

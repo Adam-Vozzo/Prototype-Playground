@@ -1,4 +1,6 @@
+import { ArrowLeft } from 'lucide';
 import { h } from '../lib/dom';
+import { icon } from '../lib/icon';
 import type { Cleanup, PrototypeEntry } from '../types';
 
 /** Renders the chrome around a prototype and manages its lifecycle. */
@@ -16,7 +18,7 @@ export function renderHost(root: HTMLElement, entry: PrototypeEntry) {
       h(
         'nav',
         { class: 'host-bar' },
-        h('a', { class: 'host-back', href: '#/', 'aria-label': 'Back to library' }, '← Library'),
+        h('a', { class: 'host-back', href: '#/', 'aria-label': 'Back to library' }, icon(ArrowLeft, 18), 'Library'),
         h('span', { class: 'host-title' }, h('span', { 'aria-hidden': 'true' }, entry.icon), ' ', entry.title),
       ),
       stage,

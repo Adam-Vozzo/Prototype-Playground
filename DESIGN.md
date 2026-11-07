@@ -67,10 +67,10 @@ all.
 
 ## 3. Labels, icons & toggles
 
-- **An icon-only control must be universally understood:** play/pause, close
-  ✕, back ←, send, search. Anything else gets a **visible text label**. A tooltip
+- **An icon-only control must be universally understood:** play/pause, close,
+  back, send, search. Anything else gets a **visible text label**. A tooltip
   or `title` is not a label: touch users never see it.
-- Every icon-only control **must** have an `aria-label`. Decorative glyphs get
+- Every icon-only control **must** have an `aria-label`. Decorative icons get
   `aria-hidden="true"`.
 - **A toggle is either an action or a state, never both:**
   - *Action button:* the label says what will happen ("Lift dome", then "Lower
@@ -79,7 +79,8 @@ all.
     `aria-pressed` (or is a `role="switch"` checkbox), and it has clear on and
     off styling.
   - ❌ A button that flips its label to describe the action *and* lights up as
-    "on". People can't tell whether ☀ means "it is day" or "make it day".
+    "on". People can't tell whether a sun icon means "it is day" or "make it
+    day".
 - **Off must not look disabled.** Show off with a neutral surface and on with
   the accent colour. Fading to ~50% opacity is reserved for `:disabled`.
 - **Pick the right control for choosing one value:** 2–6 options use a
@@ -90,6 +91,43 @@ all.
 - **Keyboard shortcuts** are optional extras. Show them where people look
   (a hint line, the `title`, or after the label on desktop), and never let them
   fire while focus is in a text field.
+
+### Icons: Lucide, not emoji
+
+- **Every icon in UI chrome must be a [Lucide](https://lucide.dev/icons) icon.**
+  That covers buttons, menus, toolbars, tabs, badges, status and system notices,
+  empty states and inputs. Use the `lucide` package with the shared helper:
+
+  ```ts
+  import { Play } from 'lucide';
+  import { icon, setIcon } from '../../lib/icon';
+  button.append(icon(Play));        // decorative: aria-hidden, class="icon"
+  setIcon(button, Pause);           // swap in place (play ↔ pause)
+  ```
+
+- **No emoji or Unicode symbols as UI icons** (▶ ⏭ ↺ ↗ ⬆ ⚙ 🎲 …). They look
+  different on every platform, ignore `currentColor`, sit on the text baseline
+  instead of centring, can't be sized or stroked consistently, and some turn
+  into colour emoji without warning.
+- **Emoji are fine as content:** things people or characters "type" (chat
+  messages), a prototype's identity in `meta.ts` (the library card icon), and
+  playful copy. The test: if it's part of the interface, it's Lucide; if it's
+  part of what the interface shows, emoji are allowed.
+- **Sizes:** 16 px in dense rows, badges and inline notices; 18 px in buttons
+  (the helper's default); 20 px for primary or icon-only controls; 24 px for
+  hero or empty states. Keep the default 2 px stroke; use 2.5 px at 12–14 px so
+  thin lines don't vanish.
+- **Colour** comes from `currentColor`, so icons follow the text and state
+  colour of their control. Don't hard-code a fill or stroke. The one exception:
+  media transport icons (play, pause, skip) use `fill: currentColor` to give
+  them weight, as media players do.
+- **Alignment:** put icon and label in an `inline-flex` box with
+  `align-items: center` and a 6–8 px gap. Never nudge with `vertical-align` or
+  margins.
+- **Motion:** to show state, rotate or swap the icon itself (a chevron turns
+  180°, play swaps to pause). Don't draw arrows with CSS borders or text.
+- Import icons by name from `'lucide'` (it's tree-shakeable). Never import the
+  whole set or use `createIcons()` on the document.
 
 ---
 
@@ -281,6 +319,7 @@ Run before merging any UI change.
 - [ ] At 390 × 844: every target ≥ 40 px (or a written exception), none < 24 px.
 - [ ] At 320 px wide: nothing clipped, overlapping or horizontally scrolling.
 - [ ] No icon-only control except play/pause, close, back, send, search.
+- [ ] Every UI icon is Lucide via `src/lib/icon.ts`; no emoji or Unicode symbols in chrome.
 - [ ] Toggles are action-style *or* state-style (§3), never both.
 - [ ] Every pressable has hover (behind `(hover: hover)`), `:active` and `:focus-visible` states.
 - [ ] Text inputs are ≥ 16 px; bottom and edge bars respect safe areas.

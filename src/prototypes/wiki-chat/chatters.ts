@@ -1,4 +1,5 @@
 /** Fake chat population: names, colours, badges and filler reactions. */
+import { Crown, Gem, Heart, Radio, Shield, Star, type IconNode } from 'lucide';
 
 export type Badge = 'host' | 'mod' | 'vip' | 'sub' | 'founder' | 'prime';
 
@@ -8,17 +9,14 @@ export interface Chatter {
   badges: Badge[];
 }
 
-/**
- * Badge icons as 16×16 SVG paths rather than text glyphs: symbol characters sit on
- * the font's baseline (and some render as emoji), so they never centre reliably.
- */
-export const BADGES: Record<Badge, { path: string; label: string }> = {
-  host: { path: 'M5.5 3.5v9l7-4.5z', label: 'Broadcaster' },
-  mod: { path: 'M8 1.5l5.5 2v4.2c0 3.1-2.3 5.6-5.5 6.8-3.2-1.2-5.5-3.7-5.5-6.8V3.5z', label: 'Moderator' },
-  vip: { path: 'M8 1.5L14.5 8 8 14.5 1.5 8z', label: 'VIP' },
-  sub: { path: 'M8 1.5l1.9 4.1 4.5.5-3.4 3 1 4.4L8 11.2l-4 2.3 1-4.4-3.4-3 4.5-.5z', label: 'Subscriber' },
-  founder: { path: 'M2 4.5l3 3L8 3l3 4.5 3-3-1.2 6.5H3.2zM3.2 12h9.6v1.5H3.2z', label: 'Founder' },
-  prime: { path: 'M8 14S2.5 10.6 2.5 6.7A3 3 0 0 1 8 4.6a3 3 0 0 1 5.5 2.1C13.5 10.6 8 14 8 14z', label: 'Supporter' },
+/** Badge icons are Lucide icons (DESIGN.md §3), drawn white inside a coloured square. */
+export const BADGES: Record<Badge, { icon: IconNode; label: string }> = {
+  host: { icon: Radio, label: 'Broadcaster' },
+  mod: { icon: Shield, label: 'Moderator' },
+  vip: { icon: Gem, label: 'VIP' },
+  sub: { icon: Star, label: 'Subscriber' },
+  founder: { icon: Crown, label: 'Founder' },
+  prime: { icon: Heart, label: 'Supporter' },
 };
 
 const COLORS = [

@@ -31,7 +31,8 @@ any static host under any path. GitHub Pages deploys need
 [`DESIGN.md`](DESIGN.md) sets the bar for interaction design, UX and motion:
 touch targets (24px minimum, 40px default), labels vs icons, toggle semantics,
 progressive disclosure, feedback timing, motion durations and easing, reduced
-motion and a review checklist. Shared tokens (`--tap`, `--dur-*`, `--ease-*`)
+motion and a review checklist. UI icons are [Lucide](https://lucide.dev/icons)
+(`icon()` in `src/lib/icon.ts`), never emoji. Shared tokens (`--tap`, `--dur-*`, `--ease-*`)
 live in `src/shell/shell.css` and can be used from any prototype's CSS.
 
 ## Adding a prototype
@@ -68,6 +69,7 @@ src/
                      (meta eager, index lazy, memoised + prefetchable)
   types.ts           PrototypeMeta / MountFn contract
   lib/dom.ts         tiny h() helper + useStyles()
+  lib/icon.ts        icon() / setIcon() for Lucide icons
   shell/             library page, prototype host chrome, global CSS
   prototypes/
     wiki-chat/       Wikipedia → stream-chat reader
