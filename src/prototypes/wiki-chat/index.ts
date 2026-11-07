@@ -20,6 +20,7 @@ interface Settings {
   chatter: number;
   highlight: boolean;
   headings: boolean;
+  panelOpen?: boolean;
 }
 
 export const mount: MountFn = (root, { slug, signal }) => {
@@ -47,7 +48,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const me: Chatter = { name: 'you', color: '#bf94ff', badges: [] };
 
   // ---------- DOM ----------
-  // Chat fills the screen; everything else lives in a compact icon toolbar on top.
+  // Chat fills the screen. On top: stream info + article box, then a transport row
+  // with what you need right now (play/pause, next, position) and a labelled
+  // "Controls" disclosure that expands in place to every other action (DESIGN.md §4).
   const iconBtn = (icon: string, label: string, disabled = false) =>
     h('button', { class: 'wc-icon', type: 'button', title: label, 'aria-label': label, disabled }, icon);
   const setIcon = (btn: HTMLElement, icon: string, label: string) => {
@@ -55,43 +58,52 @@ export const mount: MountFn = (root, { slug, signal }) => {
     btn.title = label;
     btn.setAttribute('aria-label', label);
   };
-  const setPressed = (btn: HTMLElement, on: boolean) => btn.setAttribute('aria-pressed', String(on));
-  /**
-   * A select dressed as a toolbar control. On wide screens the select shows;
-   * on phones it becomes an invisible overlay on an icon (+ short value) so
-   * tapping still opens the native picker.
-   */
-  const picker = (icon: string, label: string, select: HTMLSelectElement, extraClass = '') => {
-    const ico = h('span', { class: 'wc-pick-icon', 'aria-hidden': 'true' }, icon);
-    const val = h('span', { class: 'wc-pick-value', 'aria-hidden': 'true' });
-    const el = h('label', { class: `wc-pick ${extraClass}`, title: label }, ico, val, select);
-    const sync = () => {
-      val.textContent = select.selectedOptions[0]?.dataset.short ?? '';
-      const i = select.selectedOptions[0]?.dataset.icon;
-      if (i) ico.textContent = i;
-    };
-    select.addEventListener('change', sync, { signal });
-    return { el, sync };
+  /** Text button with a leading glyph – used inside the controls panel. */
+  const labelBtn = (icon: string, label: string, title?: string) =>
+    h('button', { class: 'wc-btn wc-btn-labelled', type: 'button', title },
+      h('span', { 'aria-hidden': 'true' }, icon), label);
+  /** Native radio group styled as a segmented control: every option visible, arrow keys work. */
+  const segmented = <T extends string | number>(legend: string, options: { value: T; label: string }[], hintKeys?: string) => {
+    const name = `wc-${legend.replace(/\W+/g, '-').toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
+    const inputs = options.map((o) => h('input', { type: 'radio', name, value: o.value }));
+    const el = h(
+      'fieldset',
+      { class: 'wc-field wc-seg-field' },
+      h('legend', { class: 'wc-field-label' }, legend, hintKeys ? h('span', { class: 'wc-keyhint' }, hintKeys) : null),
+      h('div', { class: 'wc-seg' }, ...options.map((o, i) => h('label', { class: 'wc-seg-opt' }, inputs[i], h('span', {}, o.label)))),
+    );
+    const set = (v: T) => inputs.forEach((inp) => (inp.checked = inp.value === String(v)));
+    const onChange = (fn: (v: string) => void) =>
+      el.addEventListener('change', (e) => fn((e.target as HTMLInputElement).value), { signal });
+    return { el, set, onChange };
+  };
+  /** Checkbox rendered as a labelled switch. */
+  const switchCtl = (label: string) => {
+    const input = h('input', { type: 'checkbox', role: 'switch', class: 'wc-switch-input' });
+    const el = h('label', { class: 'wc-switch' }, h('span', { class: 'wc-switch-text' }, label), input, h('span', { class: 'wc-switch-track', 'aria-hidden': 'true' }));
+    return { el, input };
   };
 
   const urlInput = h('input', {
     class: 'wc-url',
     type: 'text',
     inputmode: 'url',
+    enterkeyhint: 'go',
     placeholder: 'Paste a Wikipedia link or type a title…',
     'aria-label': 'Wikipedia URL or article title',
     autocomplete: 'off',
+    autocapitalize: 'off',
     spellcheck: 'false',
   });
   const loadBtn = h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Go live');
-  const randomBtn = iconBtn('🎲', 'Random article');
-  const form = h('form', { class: 'wc-form' }, urlInput, loadBtn, randomBtn);
+  const form = h('form', { class: 'wc-form' }, urlInput, loadBtn);
 
   const avatar = h('div', { class: 'wc-avatar', 'aria-hidden': 'true' }, '📖');
   const liveBadge = h('span', { class: 'wc-live' }, 'OFFLINE');
   const viewerEl = h('span', { class: 'wc-viewers' });
   const titleEl = h('h2', { class: 'wc-title' }, 'Nothing on air');
   const sectionEl = h('span', { class: 'wc-section' });
+  const subProgress = h('span', { class: 'wc-sub-progress' });
   const descEl = h('span', { class: 'wc-desc' }, 'Paste a Wikipedia link and chat will read it to you');
   const stream = h(
     'div',
@@ -101,35 +113,51 @@ export const mount: MountFn = (root, { slug, signal }) => {
       'div',
       { class: 'wc-stream-text' },
       h('div', { class: 'wc-stream-line' }, liveBadge, titleEl, viewerEl),
-      h('div', { class: 'wc-stream-sub' }, sectionEl, descEl),
+      h('div', { class: 'wc-stream-sub' }, sectionEl, subProgress, descEl),
     ),
   );
 
+  // --- always visible: transport ---
   const playBtn = iconBtn('▶', 'Play (Space)', true);
   playBtn.classList.add('wc-play');
   const stepBtn = iconBtn('⏭', 'Next sentence (→)', true);
-  const restartBtn = iconBtn('↺', 'Restart (R)', true);
-  const sectionSelect = h('select', { class: 'wc-select wc-section-select', disabled: true, 'aria-label': 'Jump to section', title: 'Jump to section' });
   const seek = h('input', { class: 'wc-seek', type: 'range', min: 0, max: 0, value: 0, 'aria-label': 'Article position', disabled: true });
-  const progressLabel = h('span', { class: 'wc-progress-label' }, '0 / 0');
-
-  const speedSelect = h(
-    'select',
-    { class: 'wc-select', 'aria-label': 'Reading speed' },
-    ...SPEEDS.map((s) => h('option', { value: s, 'data-short': `${s}×` }, `${s}×`)),
+  const progressLabel = h('span', { class: 'wc-progress-label', 'aria-hidden': 'true' }, '0 / 0');
+  const panelId = `wc-panel-${Math.random().toString(36).slice(2, 7)}`;
+  const moreSummary = h('span', { class: 'wc-more-summary' });
+  const moreBtn = h(
+    'button',
+    { class: 'wc-more', type: 'button', 'aria-expanded': 'false', 'aria-controls': panelId },
+    h('span', {}, 'Controls'),
+    moreSummary,
+    h('span', { class: 'wc-chevron', 'aria-hidden': 'true' }),
   );
-  const chatterSelect = h(
-    'select',
-    { class: 'wc-select', 'aria-label': 'Chat activity' },
-    ...CHATTER.map((c, i) => h('option', { value: i, 'data-icon': c.icon }, c.label)),
-  );
-  const highlightBtn = iconBtn('🖍', 'Highlight article lines');
-  const headingsBtn = iconBtn('📢', 'Announce sections');
-  const sourceLink = h('a', { class: 'wc-icon', target: '_blank', rel: 'noopener', title: 'Open on Wikipedia', 'aria-label': 'Open on Wikipedia', hidden: true }, '↗');
 
-  const sectionPick = picker('📑', 'Jump to section', sectionSelect, 'wc-pick-section');
-  const speedPick = picker('⏱', 'Reading speed ( [ / ] )', speedSelect);
-  const chatterPick = picker('💬', 'Chat activity', chatterSelect);
+  // --- one tap away: labelled controls panel ---
+  const restartBtn = labelBtn('↺', 'Restart', 'Restart from the top (R)');
+  restartBtn.disabled = true;
+  const sectionSelect = h('select', { class: 'wc-select', disabled: true });
+  const sectionField = h('label', { class: 'wc-field' }, h('span', { class: 'wc-field-label' }, 'Jump to section'), sectionSelect);
+  const speedCtl = segmented('Reading speed', SPEEDS.map((v) => ({ value: v, label: `${v}×` })), '[ ]');
+  const chatterCtl = segmented('Chat activity', CHATTER.map((c, i) => ({ value: i, label: c.label })));
+  const highlightCtl = switchCtl('Highlight article lines');
+  const headingsCtl = switchCtl('Announce new sections');
+  const randomBtn = labelBtn('🎲', 'Random article');
+  const sourceLink = h('a', { class: 'wc-btn wc-btn-labelled', target: '_blank', rel: 'noopener', hidden: true },
+    h('span', { 'aria-hidden': 'true' }, '↗'), 'Open on Wikipedia');
+
+  const group = (title: string, ...children: HTMLElement[]) =>
+    h('section', { class: 'wc-group' }, h('h3', { class: 'wc-group-title' }, title), ...children);
+  const panelBody = h(
+    'div',
+    { class: 'wc-panel-body' },
+    group('Playback', h('div', { class: 'wc-row wc-row-end' }, restartBtn, sectionField)),
+    group('Pace', speedCtl.el, chatterCtl.el),
+    group('Display', highlightCtl.el, headingsCtl.el),
+    group('Article', h('div', { class: 'wc-row' }, randomBtn, sourceLink)),
+  );
+  // panel (grid rows 0fr↔1fr) > clip (min-height 0, clips) > body (padding, layout)
+  const panel = h('div', { class: 'wc-panel', id: panelId }, h('div', { class: 'wc-panel-clip' }, panelBody));
 
   const toolbar = h(
     'header',
@@ -137,24 +165,18 @@ export const mount: MountFn = (root, { slug, signal }) => {
     h('div', { class: 'wc-bar' }, stream, form),
     h(
       'div',
-      { class: 'wc-bar wc-controls' },
-      h('div', { class: 'wc-group' }, playBtn, stepBtn, restartBtn, sectionPick.el),
+      { class: 'wc-transport', role: 'group', 'aria-label': 'Playback' },
+      playBtn,
+      stepBtn,
       h('div', { class: 'wc-progress' }, seek, progressLabel),
-      h(
-        'div',
-        { class: 'wc-group' },
-        speedPick.el,
-        chatterPick.el,
-        highlightBtn,
-        headingsBtn,
-        sourceLink,
-      ),
+      moreBtn,
     ),
+    panel,
   );
 
   const log = h('ol', { class: 'wc-log', role: 'log', 'aria-label': 'Chat messages' });
-  const resumeBtn = h('button', { class: 'wc-resume', type: 'button', hidden: true }, 'Chat paused due to scroll · ↓');
-  const chatInput = h('input', { class: 'wc-chat-input', type: 'text', placeholder: 'Send a message', maxlength: 300, 'aria-label': 'Send a message' });
+  const resumeBtn = h('button', { class: 'wc-resume', type: 'button', hidden: true }, 'Chat paused · jump to latest ↓');
+  const chatInput = h('input', { class: 'wc-chat-input', type: 'text', enterkeyhint: 'send', placeholder: 'Send a message', maxlength: 300, 'aria-label': 'Send a message' });
   const chatForm = h('form', { class: 'wc-chat-form' }, chatInput, h('button', { class: 'wc-btn wc-primary', type: 'submit' }, 'Chat'));
 
   root.append(
@@ -165,6 +187,29 @@ export const mount: MountFn = (root, { slug, signal }) => {
       h('main', { class: 'wc-chat' }, h('div', { class: 'wc-log-wrap' }, log, resumeBtn), chatForm),
     ),
   );
+
+  // ---------- controls disclosure ----------
+  const setPanelOpen = (open: boolean, persist = true) => {
+    moreBtn.setAttribute('aria-expanded', String(open));
+    panel.classList.toggle('is-open', open);
+    panel.inert = !open;
+    if (persist) {
+      settings.panelOpen = open;
+      save();
+    }
+  };
+  moreBtn.addEventListener('click', () => setPanelOpen(!panel.classList.contains('is-open')), { signal });
+  panel.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    setPanelOpen(false);
+    moreBtn.focus();
+  }, { signal });
+  const syncSummary = () => {
+    moreSummary.textContent = `${settings.speed}× · ${CHATTER[settings.chatter]?.label ?? ''}`;
+  };
+  // Open by default where there's room; remember the person's choice after that.
+  setPanelOpen(settings.panelOpen ?? matchMedia('(min-width: 900px)').matches, false);
 
   /** Empty-state welcome with clickable example articles. */
   function showWelcome() {
@@ -177,6 +222,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
           'span',
           { class: 'wc-examples' },
           ...EXAMPLES.map((t) => h('button', { class: 'wc-chip', type: 'button', onclick: () => load(t) }, t)),
+          h('button', { class: 'wc-chip wc-chip-random', type: 'button', onclick: () => randomBtn.click() }, '🎲 Surprise me'),
         ),
         h('span', { class: 'wc-keys' }, 'Space play/pause · → next · [ ] speed · R restart'),
       ),
@@ -332,7 +378,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
     const total = article.sentences.length;
     seek.max = String(total);
     seek.value = String(cursor);
-    progressLabel.textContent = `${cursor} / ${total}`;
+    progressLabel.textContent = subProgress.textContent = `${cursor} / ${total}`;
+    seek.setAttribute('aria-valuetext', `Sentence ${cursor} of ${total}`);
     const sec = article.sentences[Math.max(0, Math.min(cursor, total) - 1)]?.section ?? 0;
     sectionEl.textContent = sec === 0 ? 'Introduction' : article.sections[sec];
     sectionSelect.value = String(sec);
@@ -430,43 +477,41 @@ export const mount: MountFn = (root, { slug, signal }) => {
     if (i >= 0) jumpTo(i);
   }, { signal });
   seek.addEventListener('input', () => {
-    progressLabel.textContent = `${seek.value} / ${seek.max}`;
+    progressLabel.textContent = subProgress.textContent = `${seek.value} / ${seek.max}`;
   }, { signal });
   seek.addEventListener('change', () => jumpTo(Number(seek.value)), { signal });
 
-  speedSelect.value = String(settings.speed);
-  chatterSelect.value = String(settings.chatter);
-  speedPick.sync();
-  chatterPick.sync();
-  setPressed(highlightBtn, settings.highlight);
-  setPressed(headingsBtn, settings.headings);
+  speedCtl.set(settings.speed);
+  chatterCtl.set(settings.chatter);
+  highlightCtl.input.checked = settings.highlight;
+  headingsCtl.input.checked = settings.headings;
   log.classList.toggle('no-hl', !settings.highlight);
+  syncSummary();
 
   const setSpeed = (s: number) => {
     settings.speed = s;
-    speedSelect.value = String(s);
-    speedPick.sync();
+    speedCtl.set(s);
+    syncSummary();
     save();
     if (playing) {
       scheduleSentence(readDelay(lastSentence) * 0.5);
       scheduleChatter();
     }
   };
-  speedSelect.addEventListener('change', () => setSpeed(Number(speedSelect.value)), { signal });
-  chatterSelect.addEventListener('change', () => {
-    settings.chatter = Number(chatterSelect.value);
+  speedCtl.onChange((v) => setSpeed(Number(v)));
+  chatterCtl.onChange((v) => {
+    settings.chatter = Number(v);
+    syncSummary();
     save();
     scheduleChatter();
-  }, { signal });
-  highlightBtn.addEventListener('click', () => {
-    settings.highlight = !settings.highlight;
-    setPressed(highlightBtn, settings.highlight);
+  });
+  highlightCtl.input.addEventListener('change', () => {
+    settings.highlight = highlightCtl.input.checked;
     log.classList.toggle('no-hl', !settings.highlight);
     save();
   }, { signal });
-  headingsBtn.addEventListener('click', () => {
-    settings.headings = !settings.headings;
-    setPressed(headingsBtn, settings.headings);
+  headingsCtl.input.addEventListener('change', () => {
+    settings.headings = headingsCtl.input.checked;
     save();
   }, { signal });
 

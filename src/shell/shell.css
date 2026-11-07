@@ -9,11 +9,29 @@
   --text: #ecedf2;
   --muted: #9a9db0;
   --brand: #8b7bff;
-  --bar-h: 44px;
+  --bar-h: 48px;
+  --focus: #b3a8ff;
+
+  /* Design tokens – see DESIGN.md. Prototypes can use these directly. */
+  --tap-min: 24px;   /* WCAG 2.2 AA floor */
+  --tap: 40px;       /* default touch target */
+  --tap-lg: 48px;    /* primary / frequent actions */
+  --gap-tap: 8px;
+  --dur-1: 100ms;    /* press, hover colour */
+  --dur-2: 160ms;    /* small elements */
+  --dur-3: 240ms;    /* accordions, popovers, sheets */
+  --dur-4: 360ms;    /* large / full-screen */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -21,23 +39,30 @@ html, body, #app { margin: 0; height: 100%; }
 [hidden] { display: none !important; }
 a { color: inherit; }
 
+/* We provide our own :active states, so drop the grey iOS tap flash. */
+html { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
 .btn {
+  min-height: var(--tap);
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
 }
-.btn:hover { border-color: var(--brand); }
+@media (hover: hover) { .btn:hover { border-color: var(--brand); } }
+.btn:active { transform: scale(0.97); }
 
 /* ---------- Library ---------- */
 
 .home {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 56px 24px 80px;
+  padding: 56px max(20px, env(safe-area-inset-right)) max(80px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   min-height: 100%;
 }
 .home-header h1 {
@@ -49,15 +74,18 @@ a { color: inherit; }
 .home-search {
   width: 100%;
   max-width: 360px;
+  min-height: var(--tap-lg);
   font: inherit;
+  font-size: 16px; /* < 16px makes iOS zoom on focus */
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 14px;
-  outline: none;
+  transition: border-color var(--dur-1) var(--ease-out);
 }
 .home-search:focus { border-color: var(--brand); }
+.home-search:focus-visible { outline-offset: 1px; }
 .home-notice {
   margin: 24px 0 0;
   padding: 10px 14px;
@@ -89,7 +117,7 @@ a { color: inherit; }
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  transition: transform var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
 }
 .card::before {
   content: '';
@@ -98,11 +126,14 @@ a { color: inherit; }
   height: 3px;
   background: var(--accent);
 }
-.card:hover, .card:focus-visible {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
-  outline: none;
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  }
 }
+.card:focus-visible { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+.card:active { transform: scale(0.985); transition-duration: var(--dur-1); }
 .card-icon { font-size: 30px; line-height: 1; }
 .card-title { font-weight: 650; font-size: 17px; }
 .card-desc { color: var(--muted); font-size: 14px; line-height: 1.45; flex: 1; }
@@ -128,21 +159,28 @@ a { color: inherit; }
   height: var(--bar-h);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 14px;
+  gap: 12px;
+  padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+  padding-top: env(safe-area-inset-top);
+  box-sizing: content-box;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   font-size: 14px;
   z-index: 10;
 }
 .host-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
   text-decoration: none;
   color: var(--muted);
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 0 12px;
+  border-radius: 8px;
+  transition: color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
 }
-.host-back:hover { color: var(--text); background: var(--surface-2); }
-.host-title { font-weight: 600; }
+@media (hover: hover) { .host-back:hover { color: var(--text); background: var(--surface-2); } }
+.host-back:active { color: var(--text); background: var(--surface-2); }
+.host-title { font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Prototypes fill the stage. It is a positioned box so they can use
    absolute layout or a full-size canvas. */
@@ -155,7 +193,7 @@ a { color: inherit; }
 
 .host-status {
   position: absolute;
-  inset: var(--bar-h) 0 0 0;
+  inset: calc(var(--bar-h) + env(safe-area-inset-top)) 0 0 0;
   display: grid;
   place-content: center;
   justify-items: center;

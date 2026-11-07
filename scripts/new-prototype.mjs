@@ -36,7 +36,7 @@ import type { MountFn } from '../../types';
 import css from './style.css?inline';
 
 // Everything imported from this file is code-split and loaded only when
-// the prototype is opened.
+// the prototype is opened. UI follows DESIGN.md (targets, labels, motion).
 export const mount: MountFn = (root, { signal }) => {
   useStyles(css, signal); // removed automatically on unmount
 
@@ -48,7 +48,8 @@ export const mount: MountFn = (root, { signal }) => {
 };
 `);
 
-writeFileSync(join(dir, 'style.css'), `/* Prefix classes with "${prefix}-" – styles live only while this prototype is mounted. */
+writeFileSync(join(dir, 'style.css'), `/* Prefix classes with "${prefix}-" – styles live only while this prototype is mounted.
+   Use the shared tokens from DESIGN.md: var(--tap), var(--dur-2), var(--ease-out)… */
 .${prefix} {
   position: absolute;
   inset: 0;
