@@ -10,7 +10,7 @@ deployed by `.github/workflows/deploy.yml`.
 
 | Prototype | What it is |
 | --- | --- |
-| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message. Play/pause, step, restart, seek, jump to section, speed, chatter level, highlight & section toggles, and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
+| 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, full-screen under a compact icon toolbar (play/pause, step, restart, section, seek, speed, chatter level, highlight & section toggles). Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
 | 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, switch to day, adjust the frost. |
 
 ## Getting started
