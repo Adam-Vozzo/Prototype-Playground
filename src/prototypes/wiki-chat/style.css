@@ -252,6 +252,8 @@
 }
 .wc-setting-label { flex: none; display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 500; }
 .wc-setting-control { flex: 0 1 320px; min-width: 0; }
+.wc-setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wc-setting-desc { font-size: 12px; color: var(--wc-muted); }
 .wc-keyhint {
   font: 11px ui-monospace, monospace;
   color: #8a8a96;
@@ -363,6 +365,15 @@
   animation: wc-in var(--dur-2) var(--ease-out);
 }
 .wc-name { font-weight: 700; }
+/* Third-party emotes: 28px tall like Twitch, pulled into the 22px line so rows don't jump. */
+.wc-emote {
+  height: 28px;
+  width: auto;
+  min-width: 20px;
+  margin: -5px 1px;
+  vertical-align: middle;
+  object-fit: contain;
+}
 .wc-colon { color: var(--wc-text); }
 .wc-badge {
   display: inline-flex;
