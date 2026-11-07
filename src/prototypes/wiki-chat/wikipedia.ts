@@ -67,62 +67,135 @@ const SKIP_SECTIONS = new Set(
   ],
 );
 
-export async function fetchArticle(ref: ArticleRef, signal?: AbortSignal): Promise<Article> {
-  const params = new URLSearchParams({
-    action: 'query',
-    format: 'json',
-    formatversion: '2',
-    origin: '*', // anonymous CORS
-    redirects: '1',
-    prop: 'extracts|pageimages|info|description',
-    explaintext: '1',
-    exsectionformat: 'wikitext',
-    piprop: 'thumbnail',
-    pithumbsize: '800',
-    inprop: 'url',
-    titles: ref.title,
-  });
-  const res = await fetch(`https://${ref.lang}.wikipedia.org/w/api.php?${params}`, { signal });
-  if (!res.ok) throw new Error(`Wikipedia responded ${res.status}`);
-  const data = await res.json();
-  const page = data?.query?.pages?.[0];
-  if (!page || page.missing || page.invalid) {
-    throw new Error(`Couldn't find an article called “${ref.title}”.`);
-  }
-  const extract: string = page.extract ?? '';
-  if (!extract.trim()) throw new Error('That article has no readable text.');
+/*
+ * Content comes from Wikipedia's REST API (/api/rest_v1). The older Action API
+ * (/w/api.php) aggressively rate-limits anonymous cross-origin callers with
+ * HTTP 429, which made every load fail; the REST endpoints are cached at the
+ * edge, CORS-enabled for any origin, and are what Wikimedia recommends.
+ */
+const restBase = (lang: string) => `https://${lang}.wikipedia.org/api/rest_v1`;
+const restTitle = (title: string) => encodeURIComponent(title.replace(/ /g, '_'));
 
-  const { sections, sentences } = splitExtract(extract, ref.lang, page.title);
+/** Called before waiting to retry a throttled request. */
+export type RetryNotice = (waitMs: number, attempt: number) => void;
+
+const RETRY_WAITS = [1500, 4000, 8000];
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => (clearTimeout(t), reject(signal.reason)), { once: true });
+  });
+
+async function wikiFetch(url: string, signal: AbortSignal | undefined, what: string, onRetry?: RetryNotice) {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, { signal });
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      throw new Error("Couldn't reach Wikipedia. Check your connection, or whether a content blocker is stopping requests to wikipedia.org.");
+    }
+    if (res.ok) return res;
+    if (res.status === 404) throw new Error(`Couldn't find an article called “${what}”.`);
+    if (res.status === 429 && attempt < RETRY_WAITS.length) {
+      // Throttling is usually brief; honour Retry-After but don't make people wait 30s.
+      const hinted = Number(res.headers.get('retry-after')) * 1000 || 0;
+      const wait = Math.min(Math.max(RETRY_WAITS[attempt], hinted), RETRY_WAITS[attempt] * 2);
+      onRetry?.(wait, attempt + 1);
+      await sleep(wait, signal);
+      continue;
+    }
+    if (res.status === 429) throw new Error('Wikipedia is rate-limiting requests right now. Give it a minute and try again.');
+    throw new Error(`Wikipedia responded with an error (${res.status}).`);
+  }
+}
+
+interface Summary {
+  title: string;
+  titles?: { canonical?: string };
+  description?: string;
+  extract?: string;
+  thumbnail?: { source: string };
+  originalimage?: { source: string };
+  content_urls?: { desktop?: { page?: string } };
+}
+
+export async function fetchArticle(ref: ArticleRef, signal?: AbortSignal, onRetry?: RetryNotice): Promise<Article> {
+  // Summary first: it resolves redirects ("Octopuses" → "Octopus") and gives
+  // us the canonical title, short description and lead image.
+  const summary: Summary = await (
+    await wikiFetch(`${restBase(ref.lang)}/page/summary/${restTitle(ref.title)}`, signal, ref.title, onRetry)
+  ).json();
+  const canonical = summary.titles?.canonical ?? summary.title.replace(/ /g, '_');
+
+  // Full article as Parsoid HTML (fetched by canonical title so it never redirects).
+  const html = await (
+    await wikiFetch(`${restBase(ref.lang)}/page/html/${encodeURIComponent(canonical)}`, signal, ref.title, onRetry)
+  ).text();
+
+  const title = canonical.replace(/_/g, ' ');
+  let extract = htmlToExtract(html);
+  if (!extract.trim()) extract = summary.extract ?? '';
+  const { sections, sentences } = splitExtract(extract, ref.lang, title);
   if (!sentences.length) throw new Error('That article has no readable text.');
 
   return {
-    title: page.title,
-    url: page.fullurl ?? `https://${ref.lang}.wikipedia.org/wiki/${encodeURIComponent(page.title)}`,
+    title,
+    url: summary.content_urls?.desktop?.page ?? `https://${ref.lang}.wikipedia.org/wiki/${encodeURIComponent(canonical)}`,
     lang: ref.lang,
-    thumbnail: page.thumbnail?.source,
-    description: page.description,
+    thumbnail: summary.originalimage?.source ?? summary.thumbnail?.source,
+    description: summary.description,
     sections,
     sentences,
   };
 }
 
-export async function fetchRandomTitle(lang = 'en', signal?: AbortSignal): Promise<string> {
-  const params = new URLSearchParams({
-    action: 'query',
-    format: 'json',
-    formatversion: '2',
-    origin: '*',
-    list: 'random',
-    rnnamespace: '0',
-    rnlimit: '1',
-  });
-  const res = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params}`, { signal });
-  if (!res.ok) throw new Error(`Wikipedia responded ${res.status}`);
-  const data = await res.json();
-  const title = data?.query?.random?.[0]?.title;
-  if (!title) throw new Error('No random article came back.');
-  return title;
+export async function fetchRandomTitle(lang = 'en', signal?: AbortSignal, onRetry?: RetryNotice): Promise<string> {
+  const summary: Summary = await (
+    await wikiFetch(`${restBase(lang)}/page/random/summary`, signal, 'a random article', onRetry)
+  ).json();
+  return (summary.titles?.canonical ?? summary.title).replace(/_/g, ' ');
 }
+
+/** Things in article HTML that aren't running prose. */
+const NON_PROSE = [
+  'style', 'script', 'link', 'meta', 'table', 'figure', 'figcaption', 'audio', 'video',
+  'sup.reference', '.mw-ref', '.noprint', '.mw-empty-elt', '.infobox', '.navbox', '.hatnote',
+  '.sidebar', '.metadata', '.thumb', '.gallery', '.reflist', '.mw-references-wrap', '.mw-cite-backlink',
+].join(',');
+
+/**
+ * Parsoid HTML → the plain-text shape splitExtract() expects:
+ * one paragraph per line, headings as `== Name ==` (more `=` = deeper).
+ */
+export function htmlToExtract(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const m of doc.querySelectorAll('.mwe-math-element')) {
+    m.replaceWith(m.querySelector('math')?.getAttribute('alttext') ?? '');
+  }
+  for (const el of doc.querySelectorAll(NON_PROSE)) el.remove();
+
+  const lines: string[] = [];
+  for (const el of doc.body.querySelectorAll('h2, h3, h4, h5, h6, p')) {
+    const text = cleanText(el.textContent ?? '');
+    if (!text) continue;
+    if (el.tagName === 'P') {
+      lines.push(text);
+    } else {
+      const eq = '='.repeat(Number(el.tagName[1]));
+      lines.push(`${eq} ${text} ${eq}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+const cleanText = (s: string) =>
+  s
+    .replace(/\[\s*(?:\d+|[a-z]|note \d+|citation needed|clarification needed|when\?|who\?|according to whom\?)\s*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?)])/g, '$1')
+    .trim();
 
 /** Plain-text extract → sections + sentences. Headings look like `== Name ==`. */
 export function splitExtract(extract: string, lang: string, title: string) {
