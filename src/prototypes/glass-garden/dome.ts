@@ -21,16 +21,20 @@ export function createDome() {
   grad.addColorStop(1, '#ffffff');
   b.fillStyle = grad;
   b.fillRect(0, 0, TEX_W, TEX_H);
-  for (let i = 0; i < 900; i++) {
+  // Soft, low-contrast mottling: hard-edged blobs read as polka dots once
+  // the frost is turned up, so keep the variation subtle and blurred.
+  b.filter = 'blur(4px)';
+  for (let i = 0; i < 1400; i++) {
     const x = Math.random() * TEX_W;
     const y = Math.random() * TEX_H;
-    const r = 2 + Math.random() * 18;
-    const v = Math.random() < 0.5 ? 150 + Math.random() * 40 : 225 + Math.random() * 30;
-    b.fillStyle = `rgba(${v},${v},${v},${0.15 + Math.random() * 0.3})`;
+    const r = 2 + Math.random() * 10;
+    const v = Math.random() < 0.5 ? 175 + Math.random() * 30 : 225 + Math.random() * 30;
+    b.fillStyle = `rgba(${v},${v},${v},${0.08 + Math.random() * 0.14})`;
     b.beginPath();
     b.arc(x, y, r, 0, Math.PI * 2);
     b.fill();
   }
+  b.filter = 'none';
 
   // Live map = base + wipes.
   const live = document.createElement('canvas');

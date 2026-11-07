@@ -108,15 +108,17 @@ export const mount: MountFn = (root, { signal }) => {
   const rotateBtn = btn('⟳', 'Auto-rotate', 'Toggle auto-rotate (A)');
   const wipeBtn = btn('🧽', 'Wipe glass', 'Drag on the dome to clear the frost (W)');
   rotateBtn.classList.add('is-on');
-  const frost = h('input', { type: 'range', min: 0, max: 100, value: 40, 'aria-label': 'Frost amount' });
+  const frost = h('input', { type: 'range', min: 0, max: 100, value: 90, 'aria-label': 'Frost amount' });
   const hint = h('p', { class: 'gg-hint' }, 'Drag to orbit · scroll / pinch to zoom');
 
   wrap.append(
     h(
       'div',
       { class: 'gg-panel' },
-      h('div', { class: 'gg-row' }, liftBtn, nightBtn),
-      h('div', { class: 'gg-row' }, rotateBtn, wipeBtn),
+      liftBtn,
+      nightBtn,
+      rotateBtn,
+      wipeBtn,
       h('label', { class: 'gg-frost' }, h('span', {}, 'Frost'), frost),
       hint,
     ),
