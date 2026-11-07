@@ -2,7 +2,7 @@ import type { PrototypeMeta } from '../../types';
 
 export default {
   title: 'Glass Garden',
-  description: 'A tiny garden under a frosted glass dome. Orbit around it, wipe the frost off, lift the lid, or wait for night and the fireflies.',
+  description: 'A tiny firefly-lit garden under a frosted glass dome. Wipe the frost off to peek inside, orbit around it, lift the lid, or switch to day.',
   icon: '🪴',
   tags: ['3d', 'three.js', 'ambient'],
   accent: 'linear-gradient(90deg, #7ed6a5, #a8d8ff)',

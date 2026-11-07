@@ -11,7 +11,7 @@ deployed by `.github/workflows/deploy.yml`.
 | Prototype | What it is |
 | --- | --- |
 | 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message. Play/pause, step, restart, seek, jump to section, speed, chatter level, highlight & section toggles, and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
-| 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Orbit and zoom, wipe the frost off the glass, lift the dome, switch to night for fireflies, adjust the frost. |
+| 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, switch to day, adjust the frost. |
 
 ## Getting started
 
