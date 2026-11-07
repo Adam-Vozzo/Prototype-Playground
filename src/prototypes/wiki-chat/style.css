@@ -140,8 +140,8 @@
 /* Icon buttons inside a field. */
 .wc-field-btn, .wc-send {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -164,16 +164,46 @@
 }
 @media (pointer: coarse) {
   .wc-field-btn, .wc-send { width: var(--tap); height: var(--tap); }
+  /* Fields match the 48px buttons beside them (44 + 2px border × 2). */
+  .wc-url, .wc-chat-input { min-height: 44px; }
+  .wc-chat-wrap .wc-chat-input { min-height: var(--tap-lg); }
+  .wc-topic-actions .wc-btn { min-height: var(--tap-lg); }
 }
+
+/* Send: a flush block at the end of the chat field, full height, no pill. */
+.wc-chat-wrap {
+  padding-right: 0;
+  overflow: hidden;
+  align-items: stretch;
+  border: 0; /* no frame around the send block; focus is an inset outline instead */
+}
+.wc-chat-wrap:focus-within { outline: 2px solid var(--wc-brand); outline-offset: -2px; }
+.wc-chat-wrap .wc-chat-input { min-height: 44px; } /* = 40 + the 2px border the other fields have */
+.wc-chat-wrap .wc-send {
+  width: var(--tap-lg);
+  height: auto;
+  border-radius: 0;
+}
+.wc-chat-wrap .wc-send:active:not(:disabled) { transform: none; background: #6a24d8; }
+.wc-chat-wrap .wc-send:focus-visible { outline-color: #fff; outline-offset: -4px; }
 
 /* Topic picker (expands upward above the chat row). */
 .wc-topic-panel { background: var(--wc-panel); }
 .wc-topic-panel .wc-panel-body { border-bottom: 0; border-top: 1px solid var(--wc-line); padding-top: 12px; }
-.wc-topic-form { display: flex; flex-direction: column; gap: 10px; max-width: 680px; }
+.wc-topic-form { display: flex; flex-direction: column; gap: 10px; max-width: 960px; }
 .wc-topic-label { font-size: 16px; font-weight: 700; }
-.wc-topic-actions { display: flex; gap: var(--gap-tap); }
+.wc-topic-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--gap-tap); }
+/* Narrow: field on its own line, then Random + Go live as two equal halves. */
+.wc-topic-row .wc-input-wrap { flex: 1 1 100%; }
+.wc-topic-actions { flex: 1 1 100%; display: flex; gap: var(--gap-tap); }
 .wc-topic-actions .wc-btn { flex: 1 1 0; }
-@container (min-width: 520px) { .wc-topic-actions .wc-btn { flex: 0 0 auto; } }
+/* Wide enough for a comfortable field plus both buttons: one row, buttons at the field's end. */
+@container (min-width: 560px) {
+  .wc-topic-row { flex-wrap: nowrap; }
+  .wc-topic-row .wc-input-wrap { flex: 1 1 0; }
+  .wc-topic-actions { flex: none; }
+  .wc-topic-actions .wc-btn { flex: none; min-height: 0; }
+}
 .wc-examples-label { flex: none; align-self: center; font-size: 12px; color: var(--wc-muted); margin-right: 2px; }
 
 /* ---------- buttons ---------- */
@@ -554,7 +584,7 @@
 .wc-chat-form {
   flex: none;
   display: flex;
-  align-items: center;
+  align-items: stretch; /* New topic matches the field's height */
   gap: 8px;
   padding: 8px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
   background: var(--wc-bg);
