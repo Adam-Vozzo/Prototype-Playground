@@ -12,21 +12,36 @@
 export type V3 = [number, number, number];
 export type M3 = [number, number, number, number, number, number, number, number, number]; // row-major
 
-// ---------- real-world constants ----------
+// ---------- constants ----------
 export const G = 9.81;
-export const BALL_R = 0.02; // a 40 mm ping-pong ball
-/** Quadratic air drag ½ρC_dA/m for a 2.7 g, 40 mm ball (≈ 8.4 m/s terminal speed). */
-export const BALL_DRAG = 0.14;
-/** Ball on paddle rubber. */
-export const RESTITUTION = 0.82;
-/** Fraction of sliding speed the rubber grips away on contact. */
-export const GRIP = 0.3;
+export const BALL_R = 0.02; // 40 mm, ping-pong size
+
+export type BallName = 'real' | 'floaty';
+export interface BallKind {
+  label: string;
+  /** Gravity on the ball (m/s²). */
+  g: number;
+  /** Quadratic air drag ½ρC_dA/m (1/m). */
+  drag: number;
+  /** Restitution off the paddle. */
+  e: number;
+  /** Fraction of sliding speed the rubber grips away on contact. */
+  grip: number;
+}
+export const BALLS: Record<BallName, BallKind> = {
+  // A 2.7 g ping-pong ball: real gravity, ≈ 8.4 m/s terminal speed.
+  real: { label: 'Real', g: G, drag: 0.14, e: 0.82, grip: 0.3 },
+  // Light and draggy, like a balloon: slow falls, and sideways drift dies away quickly.
+  floaty: { label: 'Floaty', g: 2.2, drag: 0.4, e: 0.86, grip: 0.12 },
+};
 /** CSS pixels per metre on a phone (~158 CSS px per inch on iPhones). */
 export const PX_PER_M = 6200;
 
 const TAU_V = 0.5; // s: how long a velocity estimate is trusted
 const TAU_P = 0.9; // s: how long a position estimate is trusted
-const DEADBAND = 0.12; // m/s²: hand tremor and sensor noise
+const DEADBAND = 0.12; // m/s²: hand tremor and sensor noise (default, before calibration)
+const TILT_TAU = 0.07; // s: smoothing on the paddle's tilt, so a wrist flick doesn't jerk it
+const wrap180 = (d: number) => ((((d + 180) % 360) + 360) % 360) - 180;
 
 // ---------- vector helpers ----------
 export const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -67,7 +82,21 @@ export function rotation(alphaDeg: number, betaDeg: number, gammaDeg: number): M
  * ω (world), and leaky estimates of the centre's velocity and position.
  */
 export class PaddleTracker {
+  /** The paddle's orientation: tilt relative to your calibrated level, scaled by tiltGain and smoothed. */
   R: M3 = IDENTITY;
+  /** The phone's true orientation, for turning acceleration into world axes. */
+  Rtrue: M3 = IDENTITY;
+  /** Calibrated level: the tilt you naturally hold as "flat" (degrees). */
+  level = { beta: 0, gamma: 0 };
+  /** How much of your tilt the paddle follows: 1 = real physics, 0 = always level. */
+  tiltGain = 1;
+  /** Calibrated accelerometer bias (world axes) and noise deadband. */
+  bias: V3 = [0, 0, 0];
+  deadband = DEADBAND;
+  /** Latest raw readings, for calibration. */
+  raw = { beta: 0, gamma: 0 };
+  rawAccel: V3 = [0, 0, 0];
+  private tilt: { beta: number; gamma: number } | null = null;
   omega: V3 = [0, 0, 0];
   vel: V3 = [0, 0, 0];
   pos: V3 = [0, 0, 0];
@@ -99,8 +128,18 @@ export class PaddleTracker {
   }
 
   onOrientation(alpha: number, beta: number, gamma: number, now: number) {
-    const R = rotation(alpha, beta, gamma);
+    this.raw = { beta, gamma };
+    this.Rtrue = rotation(alpha, beta, gamma);
     const dt = (now - this.lastOrientT) / 1000;
+    const tb = wrap180(beta - this.level.beta) * this.tiltGain;
+    const tg = wrap180(gamma - this.level.gamma) * this.tiltGain;
+    if (!this.tilt || !(dt > 0 && dt < 0.15)) this.tilt = { beta: tb, gamma: tg };
+    else {
+      const k = 1 - Math.exp(-dt / TILT_TAU);
+      this.tilt.beta += (tb - this.tilt.beta) * k;
+      this.tilt.gamma += (tg - this.tilt.gamma) * k;
+    }
+    const R = rotation(alpha, this.tilt.beta, this.tilt.gamma);
     if (this.lastOrientT && dt > 0.004 && dt < 0.15) {
       // ω from the change in orientation: dR = R·Rprevᵀ ≈ I + [ω]× dt. Sign conventions can't bite.
       const P = this.R;
@@ -118,7 +157,7 @@ export class PaddleTracker {
     if (!g || g.x == null) return;
     const gi: V3 = [g.x ?? 0, g.y ?? 0, g.z ?? 0];
     const a0 = e.acceleration;
-    const up = mulT(this.R, [0, 0, 1]); // world up, in device axes
+    const up = mulT(this.Rtrue, [0, 0, 1]); // world up, in device axes
     // Spec: a phone at rest reports +g along "up". Some platforms invert both vectors; vote on it.
     const react = a0 && a0.x != null ? sub(gi, [a0.x ?? 0, a0.y ?? 0, a0.z ?? 0]) : gi;
     if (len(react) > 5) this.signVote = this.signVote * 0.97 + Math.sign(dot(react, up)) * 0.03;
@@ -128,9 +167,10 @@ export class PaddleTracker {
       a0 && a0.x != null
         ? scale([a0.x ?? 0, a0.y ?? 0, a0.z ?? 0], s)
         : sub(scale(gi, s), scale(up, G)); // no separate linear acceleration: remove gravity ourselves
-    let aw = mul(this.R, lin);
+    this.rawAccel = mul(this.Rtrue, lin);
+    let aw = sub(this.rawAccel, this.bias);
     const m = len(aw);
-    aw = m < DEADBAND ? [0, 0, 0] : scale(aw, 1 - DEADBAND / m);
+    aw = m < this.deadband ? [0, 0, 0] : scale(aw, 1 - this.deadband / m);
 
     const dt = Math.min(0.05, Math.max(0.001, (now - (this.lastMotionT || now - 16)) / 1000));
     this.lastMotionT = now;
@@ -141,7 +181,8 @@ export class PaddleTracker {
 
   /** Touch fallback: tilt from the pointer, an upward shove from a tap. */
   manual(betaDeg: number, gammaDeg: number, vz: number, now: number) {
-    this.R = rotation(0, betaDeg, gammaDeg);
+    this.R = rotation(0, betaDeg * this.tiltGain, gammaDeg * this.tiltGain);
+    this.Rtrue = this.R;
     this.omega = [0, 0, 0];
     const dt = Math.min(0.05, Math.max(0.001, (now - (this.t || now - 16)) / 1000));
     this.vel = [0, 0, vz];
@@ -156,10 +197,10 @@ export interface Ball {
 }
 
 /** Gravity + quadratic drag, one explicit step. */
-export function stepBall(b: Ball, dt: number) {
+export function stepBall(b: Ball, dt: number, k: BallKind) {
   const sp = len(b.v);
-  const drag = scale(b.v, -BALL_DRAG * sp);
-  b.v = add(b.v, scale(add([0, 0, -G], drag), dt));
+  const drag = scale(b.v, -k.drag * sp);
+  b.v = add(b.v, scale(add([0, 0, -k.g], drag), dt));
   b.p = add(b.p, scale(b.v, dt));
 }
 
@@ -170,14 +211,14 @@ export function stepBall(b: Ball, dt: number) {
  * along its normal at the contact (how hard you "hit" it) and the ball's
  * approach speed.
  */
-export function bounce(b: Ball, paddle: PaddleTracker, rDev: V3) {
+export function bounce(b: Ball, paddle: PaddleTracker, rDev: V3, k: BallKind) {
   const n = paddle.normal();
   const vp = paddle.pointVel(rDev);
   const rel = sub(b.v, vp);
   const vn = dot(rel, n);
   if (vn >= 0) return null; // already separating
   const vt = sub(rel, scale(n, vn));
-  const out = add(scale(vt, 1 - GRIP), scale(n, -RESTITUTION * vn));
+  const out = add(scale(vt, 1 - k.grip), scale(n, -k.e * vn));
   b.v = add(vp, out);
   return { push: dot(vp, n), approach: -vn };
 }
