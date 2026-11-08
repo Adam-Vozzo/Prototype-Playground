@@ -1,12 +1,12 @@
-import { ChevronDown, Hand, Power, Smartphone, SlidersHorizontal } from 'lucide';
+import { AudioWaveform, Check, ChevronDown, Drum, Hand, Power, Repeat, Smartphone, SlidersHorizontal, Sparkles, Wind, Zap } from 'lucide';
 import { h, useStyles } from '../../lib/dom';
 import { setBusy } from '../../lib/feedback';
 import { hapticTick } from '../../lib/haptics';
-import { icon } from '../../lib/icon';
+import { icon, type IconNode } from '../../lib/icon';
 import { keepAwake, requestMotion, waitForMotion } from '../../lib/sensors';
 import type { MountFn } from '../../types';
 import css from './style.css?inline';
-import { createVoice, VOICES, type Voice, type VoiceName } from './voice';
+import { createVoice, LAYER_DEFAULTS, VOICES, type LayerName, type Voice, type VoiceName } from './voice';
 
 type Notes = 'glide' | 'scale';
 type Peak = 'speed' | 'gforce';
@@ -27,15 +27,26 @@ interface Settings {
   voice: VoiceName;
   notes: Notes;
   peak: Peak;
+  layers: Record<LayerName, boolean>;
 }
+
+const LAYERS: { name: LayerName; label: string; icon: IconNode; on: string; off: string }[] = [
+  { name: 'wind', label: 'Wind', icon: Wind, on: 'Wind whoosh on', off: 'Wind whoosh off' },
+  { name: 'shimmer', label: 'Shimmer', icon: Sparkles, on: 'Shimmer on: overtones bloom as you swing', off: 'Shimmer off' },
+  { name: 'harmony', label: 'Harmony', icon: AudioWaveform, on: 'Harmony on: a second voice trails your notes', off: 'Harmony off' },
+  { name: 'crackle', label: 'Crackle', icon: Zap, on: 'Crackle on: sparks build with speed', off: 'Crackle off' },
+  { name: 'boom', label: 'Boom', icon: Drum, on: 'Boom on: a thump at the peak of each swing', off: 'Boom off' },
+  { name: 'echo', label: 'Echo', icon: Repeat, on: 'Echo on: swings leave a tail', off: 'Echo off' },
+];
 
 export const mount: MountFn = (root, { slug, signal }) => {
   useStyles(css, signal);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const key = (k: string) => `${slug}:${k}`;
-  const settings: Settings = { voice: 'plasma', notes: 'scale', peak: 'speed' };
+  const settings: Settings = { voice: 'plasma', notes: 'scale', peak: 'speed', layers: { ...LAYER_DEFAULTS } };
   try {
-    Object.assign(settings, JSON.parse(localStorage.getItem(key('settings')) || '{}'));
+    const saved = JSON.parse(localStorage.getItem(key('settings')) || '{}') as Partial<Settings>;
+    Object.assign(settings, saved, { layers: { ...LAYER_DEFAULTS, ...saved.layers } });
   } catch {
     /* defaults */
   }
@@ -62,7 +73,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
       { class: 'ss-steps' },
       h('li', {}, icon(Smartphone, 16), h('span', {}, 'Hold the bottom of your phone like a hilt, top pointing out. Grip it firmly.')),
       h('li', {}, icon(Power, 16), h('span', {}, 'Tap Ignite, then sweep big arcs. Point higher for higher notes.')),
-      h('li', {}, icon(Hand, 16), h('span', {}, 'Faster swings build the buzzing whoosh. It peaks mid-arc, where the tip moves fastest.')),
+      h('li', {}, icon(Hand, 16), h('span', {}, 'Faster swings build the buzz, sparks and shimmer, peaking mid-arc where the tip moves fastest. Mix the layers under Sound.')),
     ),
     h('p', { class: 'ss-note-text' }, 'Headphones make it pan with your swing. On iPhone, Ignite asks for motion access.'),
   );
@@ -82,6 +93,34 @@ export const mount: MountFn = (root, { slug, signal }) => {
     fs.append(row);
     return fs;
   };
+
+  // Layer switches: state toggles with a fixed label + aria-pressed (DESIGN.md §3).
+  function layerGroup() {
+    const group = h('div', { class: 'ss-layers-row' });
+    for (const l of LAYERS) {
+      const btn = h(
+        'button',
+        { class: 'ss-layer', type: 'button', 'aria-pressed': String(settings.layers[l.name]) },
+        icon(l.icon, 16),
+        h('span', {}, l.label),
+        icon(Check, 14, 'ss-layer-check'),
+      ) as HTMLButtonElement;
+      btn.addEventListener(
+        'click',
+        () => {
+          const next = !settings.layers[l.name];
+          settings.layers[l.name] = next;
+          btn.setAttribute('aria-pressed', String(next));
+          voice?.setLayer(l.name, next);
+          save();
+          setStatus(next ? l.on : l.off);
+        },
+        { signal },
+      );
+      group.append(btn);
+    }
+    return h('div', { class: 'ss-seg', role: 'group', 'aria-labelledby': `${slug}-layers` }, h('span', { class: 'ss-legend', id: `${slug}-layers` }, 'Layers'), group);
+  }
 
   const save = () => {
     localStorage.setItem(key('settings'), JSON.stringify(settings));
@@ -108,11 +147,12 @@ export const mount: MountFn = (root, { slug, signal }) => {
       save();
       setStatus(v === 'scale' ? 'Notes snap to a scale' : 'Notes glide smoothly');
     }),
-    segmented<Peak>('peak', 'Whoosh peaks with', [['speed', 'Speed'], ['gforce', 'G-force']], settings.peak, (v) => {
+    segmented<Peak>('peak', 'Swing peaks with', [['speed', 'Speed'], ['gforce', 'G-force']], settings.peak, (v) => {
       settings.peak = v;
       save();
-      setStatus(v === 'speed' ? 'Whoosh follows swing speed' : 'Whoosh follows G-force (snappy starts and stops)');
+      setStatus(v === 'speed' ? 'Sound follows swing speed' : 'Sound follows G-force (snappy starts and stops)');
     }),
+    layerGroup(),
   );
   const panel = h('div', { class: 'ss-panel', id: panelId }, panelInner);
   const ctrlLabel = h('span', {});
@@ -124,7 +164,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
     icon(ChevronDown, 18, 'ss-chev'),
   ) as HTMLButtonElement;
   const summarise = () => {
-    ctrlLabel.textContent = `Sound · ${VOICES[settings.voice].label} · ${settings.notes === 'scale' ? 'Scale' : 'Glide'}`;
+    ctrlLabel.replaceChildren('Sound', h('span', { class: 'ss-sum' }, ` · ${VOICES[settings.voice].label}`));
   };
   summarise();
   const setOpen = (open: boolean) => {
@@ -291,7 +331,10 @@ export const mount: MountFn = (root, { slug, signal }) => {
       hapticTick();
       if (on) return powerOff();
       // Create audio inside the tap so iOS unlocks it.
-      voice ??= createVoice(signal);
+      if (!voice) {
+        voice = createVoice(signal);
+        for (const l of LAYERS) voice.setLayer(l.name, settings.layers[l.name]);
+      }
       if (sensorsLive || input === 'touch') return powerOn();
       setBusy(igniteBtn, true);
       setStatus('Asking for motion access…');
@@ -466,6 +509,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
         rising = false;
         pulseT = now;
         hapticTick(); // best effort: iOS may ignore it outside a tap
+        voice?.peak(peakD);
         const peak = Math.round(swingPeakKmh);
         if (peak > best) {
           best = peak;

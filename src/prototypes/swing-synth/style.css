@@ -118,10 +118,17 @@
   -webkit-backdrop-filter: blur(12px);
   transition: padding var(--dur-3) var(--ease-out), border-color var(--dur-3) var(--ease-out);
 }
-.ss-panel.is-open .ss-panel-inner { padding: 12px; border-color: rgba(255, 255, 255, 0.12); }
+.ss-panel.is-open .ss-panel-inner {
+  padding: 12px;
+  border-color: rgba(255, 255, 255, 0.12);
+  /* Short screens: scroll inside the panel rather than covering the bar. */
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 .ss-seg { margin: 0; padding: 0; border: 0; min-width: 0; }
-.ss-seg legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #a7b0c8; }
+.ss-seg legend, .ss-legend { display: block; padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #a7b0c8; }
 .ss-seg-row { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
 .ss-seg-opt { flex: 1 1 0; position: relative; display: flex; }
 .ss-seg-opt input { position: absolute; opacity: 0; inset: 0; margin: 0; pointer-events: none; }
@@ -179,6 +186,9 @@
 .ss-btn[aria-expanded='true'] .ss-chev { transform: rotate(180deg); }
 .ss-disclosure { min-width: 0; flex: 0 1 auto; overflow: hidden; }
 .ss-primary { flex: none; }
+.ss-bar .ss-primary { padding: 0 16px; }
+.ss-bar .ss-disclosure { padding: 0 12px; gap: 6px; }
+@media (max-width: 359px) { .ss-sum { display: none; } }
 /* While powered down the readouts are all zero: let the intro have the space. */
 .ss:not(.is-on) .ss-stats, .ss:not(.is-on) .ss-note { visibility: hidden; }
 .ss-disclosure > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -197,3 +207,45 @@
 @media (prefers-reduced-motion: reduce) {
   .ss-intro, .ss-stat-v.is-pop { animation: none; }
 }
+
+/* ---------- layer toggles ---------- */
+.ss-layers-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ss-layer {
+  position: relative;
+  min-height: var(--tap);
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #cfd5e6;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+.ss-layer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) { .ss-layer:hover { background: rgba(255, 255, 255, 0.11); } }
+.ss-layer:active { transform: scale(0.96); }
+.ss-layer .ss-layer-check {
+  display: none;
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 12px;
+  height: 12px;
+  color: var(--ss-col);
+}
+/* On: accent fill + border + a check (not colour alone). Off stays neutral, never faded. */
+.ss-layer[aria-pressed='true'] {
+  color: #fff;
+  background: color-mix(in srgb, var(--ss-col) 28%, transparent);
+  border-color: color-mix(in srgb, var(--ss-col) 70%, transparent);
+}
+.ss-layer[aria-pressed='true'] .ss-layer-check { display: block; }
+@media (max-width: 380px) { .ss-layer > svg:first-child { display: none; } }
