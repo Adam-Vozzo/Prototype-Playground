@@ -3,27 +3,34 @@ import { h, useStyles } from '../../lib/dom';
 import { setBusy } from '../../lib/feedback';
 import { hapticTick } from '../../lib/haptics';
 import { icon } from '../../lib/icon';
-import { keepAwake, requestMotion, toScreen, upAccel, waitForMotion } from '../../lib/sensors';
+import { keepAwake, requestMotion, toScreen, waitForMotion } from '../../lib/sensors';
 import type { MountFn } from '../../types';
+import {
+  add,
+  BALL_R,
+  bounce,
+  dot,
+  G,
+  mulT,
+  PaddleTracker,
+  PX_PER_M,
+  scale,
+  stepBall,
+  sub,
+  type Ball,
+  type V3,
+} from './physics';
 import { createSound, type Sound } from './sound';
 import css from './style.css?inline';
 
-// ---------- tuning (metres, seconds; gravity is slowed down for playability) ----------
-const G = 5.2;
-const PADDLE_R = 0.075; // a real blade is ~15 cm across
-const BALL_R = 0.02; // 40 mm ball
-const SWEET_R = 0.028;
-const V_MAX = 2.7; // ~0.7 m apex
-const V_MIN_HIT = 1.45; // a weak hit still clears ~0.2 m
-const E_HIT = 0.55; // how much of the incoming speed an active hit keeps
-const E_DEAD = 0.66; // restitution of a still paddle
-const K_SWING = 1.15; // paddle speed → ball speed
-const HIT_SPEED = 0.28; // m/s of upward paddle speed that counts as a swing
-const EARLY_MS = 140; // a swing peak this long before contact still counts
-const LATE_MS = 120; // …and a swing this soon after a dead bounce rescues it
-const TILT_K = 0.22; // tilt → sideways speed
-const MAX_TILT = (35 * Math.PI) / 180;
-const DEAD_APEX = 0.06; // below this the ball has died out
+// Real-world scale: the canvas is the paddle at its true physical size (see physics.ts).
+const SWEET_R = 0.015; // centre ring, double points
+const EDGE = 0.002; // contact still counts this far past the screen edge
+const DEAD_APEX = 0.02; // a bounce lower than this means the ball has died
+const PUSH = 0.12; // m/s of paddle speed at contact that counts as a push
+const EYE = 0.45; // m from your eye to the screen, for perspective
+const SPAWN_H = 0.3; // m above the paddle where each ball starts
+const TAP_TILT = 12; // degrees of tilt in the touch fallback
 
 type State = 'intro' | 'playing' | 'paused' | 'falling' | 'over';
 type Input = 'motion' | 'touch';
@@ -88,22 +95,20 @@ export const mount: MountFn = (root, { slug, signal }) => {
   let muted = false;
   let score = 0;
   let streak = 0;
-  let deadCount = 0;
   let overReason = '';
-  let fallT = 0;
-  let fallOff = true; // false = the ball died out on the paddle instead of falling off it
-  const ball = { x: 0, y: 0, h: 0.4, vx: 0, vy: 0, vh: 0 };
-  let lateUntil = 0; // performance.now() deadline for a late rescue after a dead bounce
+  let overAt = 0; // performance.now() when the game-over card should appear
+  let lostBelow = false; // the ball went past the paddle (draw nothing)
+  const tracker = new PaddleTracker();
+  const ball: Ball = { p: [0, 0, SPAWN_H], v: [0, 0, 0] };
+  let lastRelZ = SPAWN_H;
+  let rel: V3 = [0, 0, SPAWN_H]; // ball centre in the paddle's frame (x right, y up the screen, z out of it)
 
-  // paddle input
-  let tiltX = 0; // radians, screen frame: + = right edge down
-  let tiltY = 0; // + = bottom edge down
-  let vpSensor = 0; // upward paddle speed from the accelerometer (m/s, leaky)
-  let lastMotionT = 0;
-  let tapT = -1e9; // touch mode: synthetic swing start
-  const hist: { t: number; v: number }[] = [];
+  // touch fallback
+  let tapT = -1e9;
+  let tapTiltX = 0; // degrees
+  let tapTiltY = 0;
 
-  // effects
+  // effects, in paddle coordinates (metres)
   type Pop = { text: string; x: number; y: number; t0: number; tone: 'good' | 'sweet' | 'dead' };
   const pops: Pop[] = [];
   const ripples: { x: number; y: number; t0: number; s: number }[] = [];
@@ -113,56 +118,31 @@ export const mount: MountFn = (root, { slug, signal }) => {
     if (status.textContent !== s) status.textContent = s;
   };
 
-  const vpTouch = (now: number) => {
-    const age = (now - tapT) / 1000;
-    return age >= 0 && age < 0.16 ? 1.5 * (1 - age / 0.16) : 0;
-  };
-  const vpNow = (now: number) => Math.max(vpSensor, vpTouch(now));
-  const record = (now: number) => {
-    hist.push({ t: now, v: vpNow(now) });
-    while (hist.length && hist[0].t < now - 400) hist.shift();
-  };
-  const recentMax = (now: number, ms: number) => {
-    let m = vpNow(now);
-    for (let i = hist.length - 1; i >= 0 && hist[i].t >= now - ms; i--) m = Math.max(m, hist[i].v);
-    return m;
-  };
-
   // ---------- sensors ----------
-  addEventListener(
-    'devicemotion',
-    (e) => {
-      if (input !== 'motion') return;
-      const a = upAccel(e);
-      if (a == null) return;
-      const now = performance.now();
-      const dt = Math.min(0.05, Math.max(0.001, (now - (lastMotionT || now - 16)) / 1000));
-      lastMotionT = now;
-      const ad = Math.abs(a) < 0.3 ? 0 : a; // ignore hand tremor
-      vpSensor = (vpSensor + ad * dt) * Math.exp(-dt / 0.22); // leaky integral: paddle speed, drifts back to 0
-      record(now);
-    },
-    { signal },
-  );
   addEventListener(
     'deviceorientation',
     (e) => {
       if (input !== 'motion' || e.beta == null || e.gamma == null) return;
-      const clamp = (v: number) => Math.max(-MAX_TILT, Math.min(MAX_TILT, v));
-      const [sx, sy] = toScreen(Math.sin((e.gamma * Math.PI) / 180), Math.sin((e.beta * Math.PI) / 180));
-      tiltX = clamp(Math.asin(Math.max(-1, Math.min(1, sx))));
-      tiltY = clamp(Math.asin(Math.max(-1, Math.min(1, sy))));
+      tracker.onOrientation(e.alpha ?? 0, e.beta, e.gamma, performance.now());
+    },
+    { signal },
+  );
+  addEventListener(
+    'devicemotion',
+    (e) => {
+      if (input === 'motion') tracker.onMotion(e, performance.now());
     },
     { signal },
   );
 
-  // Touch / mouse fallback: tap = swing, position = tilt.
+  // Touch / mouse fallback: tap = push up; the pointer tilts the paddle away from it,
+  // so tapping on the ball sends it back toward the middle.
   const pointerTilt = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
-    const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
-    const ny = ((e.clientY - r.top) / r.height) * 2 - 1;
-    tiltX = Math.max(-1, Math.min(1, nx)) * MAX_TILT * 0.5;
-    tiltY = Math.max(-1, Math.min(1, ny)) * MAX_TILT * 0.5;
+    const nx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1));
+    const ny = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1));
+    tapTiltX = -nx * TAP_TILT;
+    tapTiltY = -ny * TAP_TILT;
   };
   canvas.addEventListener(
     'pointermove',
@@ -194,21 +174,26 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   // ---------- game flow ----------
   const resetBall = () => {
-    Object.assign(ball, { x: (Math.random() - 0.5) * 0.01, y: (Math.random() - 0.5) * 0.01, h: 0.42, vx: 0, vy: 0, vh: 0 });
-    lateUntil = 0;
+    const now = performance.now();
+    tracker.reset(now);
+    const jitter = () => (Math.random() - 0.5) * 0.008;
+    ball.p = add(tracker.posAt(now), [jitter(), jitter(), SPAWN_H]);
+    ball.v = [0, 0, 0];
+    lastRelZ = SPAWN_H;
+    lostBelow = false;
   };
 
   const startGame = () => {
     score = 0;
     streak = 0;
-    deadCount = 0;
     scoreEl.textContent = '0';
     pops.length = ripples.length = 0;
     resetBall();
     state = 'playing';
     overlay.hidden = true;
+    modeChip.hidden = false;
     pauseBtn.disabled = false;
-    setStatus(input === 'motion' ? 'Flick the phone up as the ball meets its shadow' : 'Tap as the ball meets its shadow');
+    setStatus(input === 'motion' ? 'Keep it over the screen and push up as it lands' : 'Tap on the ball as it lands');
   };
 
   const showCard = (title: string, body: (Node | string)[], primary: string, primaryIcon = Play, showTap = false) => {
@@ -229,11 +214,11 @@ export const mount: MountFn = (root, { slug, signal }) => {
         h(
           'ol',
           { class: 'pb-steps' },
-          h('li', {}, icon(Smartphone, 16), h('span', {}, 'Hold your phone flat, screen up, like a paddle. Grip it firmly.')),
-          h('li', {}, h('span', { class: 'pb-dot' }), h('span', {}, 'The ball shrinks onto its shadow as it falls. A ring closes in when it’s about to land.')),
-          h('li', {}, icon(Hand, 16), h('span', {}, 'Flick the phone up right as it lands. Tilt to steer it back to the middle.')),
+          h('li', {}, icon(Smartphone, 16), h('span', {}, 'Your phone is the paddle: the whole screen, at real size. Hold it flat, screen up, and grip it firmly.')),
+          h('li', {}, h('span', { class: 'pb-dot' }), h('span', {}, 'The ball hangs in the room above it. Move the phone under it and the ball moves on screen just as it would in real life. Off the edge, an arrow shows where it went.')),
+          h('li', {}, icon(Hand, 16), h('span', {}, 'Push up gently as it lands to keep it bouncing. Tilt to send it back to the middle. Bounces in the centre ring score double.')),
         ),
-        h('p', { class: 'pb-note' }, 'Turn the volume up. On iPhone, Start asks for motion access.'),
+        h('p', { class: 'pb-note' }, 'Turn on Portrait Orientation Lock so the screen doesn’t rotate. Unfold your phone for a bigger paddle. On iPhone, Start asks for motion access.'),
       ],
       'Start',
       Play,
@@ -375,60 +360,39 @@ export const mount: MountFn = (root, { slug, signal }) => {
   updateChip();
 
   // ---------- physics ----------
-  const timeToContact = () => {
-    // h + vh t − G t²/2 = 0, positive root
-    const d = ball.vh * ball.vh + 2 * G * ball.h;
-    return (ball.vh + Math.sqrt(Math.max(0, d))) / G;
+  let W = 0, H = 0, dpr = 1;
+  const halfW = () => W / 2 / PX_PER_M;
+  const halfH = () => H / 2 / PX_PER_M;
+  /** Paddle-frame point → screen-frame metres (x right, y down), handling screen rotation. */
+  const toScr = (x: number, y: number) => toScreen(x, -y);
+
+  const endSoon = (reason: string, below: boolean, delay = 900) => {
+    state = 'falling';
+    overReason = reason;
+    lostBelow = below;
+    overAt = performance.now() + delay;
+    streak = 0;
   };
 
-  const onContact = (now: number) => {
-    const dist = Math.hypot(ball.x, ball.y);
-    if (dist > PADDLE_R + BALL_R * 0.25) {
-      state = 'falling';
-      fallT = now;
-      overReason = 'Off the edge';
-      fallOff = true;
-      sound?.drop();
+  const contact = (now: number) => {
+    const rDev: V3 = [rel[0], rel[1], 0];
+    const n = tracker.normal();
+    // Rest the ball on the surface, then bounce it off the moving paddle.
+    ball.p = add(ball.p, scale(n, BALL_R - rel[2]));
+    const res = bounce(ball, tracker, rDev);
+    if (!res) return;
+    const vOut = dot(sub(ball.v, tracker.pointVel(rDev)), n);
+    const apex = (vOut * vOut) / (2 * G * Math.max(0.3, n[2]));
+    const dist = Math.hypot(rel[0], rel[1]);
+    const pushed = res.push > PUSH;
+    const strength = Math.min(1, res.approach / 3 + Math.max(0, res.push) / 1.5);
+    ripples.push({ x: rel[0], y: rel[1], t0: now, s: 0.4 + strength });
+    if (apex < DEAD_APEX) {
+      sound?.tok(0.2, { dead: true });
+      endSoon('The ball died out', false, 700);
+      setStatus('It stopped bouncing. Push up a little as it lands');
       return;
     }
-    const vin = -ball.vh;
-    const vHit = recentMax(now, EARLY_MS);
-    ball.h = 0;
-    if (vHit > HIT_SPEED) {
-      hit(now, vin, vHit, dist);
-    } else {
-      // Dead bounce: the paddle wasn't moving. Still allow a late rescue.
-      const out = E_DEAD * vin;
-      ball.vh = out;
-      deadCount++;
-      lateUntil = now + LATE_MS;
-      sound?.tok(0.3, { dead: true });
-      ripples.push({ x: ball.x, y: ball.y, t0: now, s: 0.4 });
-      if ((out * out) / (2 * G) < DEAD_APEX) {
-        state = 'falling';
-        fallT = now;
-        overReason = 'The ball died out';
-        fallOff = false;
-        sound?.drop();
-        return;
-      }
-      streak = 0;
-      pops.push({ text: 'Swing!', x: ball.x, y: ball.y, t0: now, tone: 'dead' });
-      setStatus(deadCount > 1 ? 'Flick up harder as it lands' : 'Too still. Flick up as it lands');
-    }
-  };
-
-  const hit = (now: number, vin: number, vHit: number, dist: number) => {
-    const out = Math.min(V_MAX, Math.max(V_MIN_HIT, E_HIT * vin + K_SWING * vHit));
-    ball.vh = out;
-    // Ball leaves along the paddle's normal: it goes the way the paddle leans.
-    const jitter = 0.012 + Math.min(0.03, score * 0.0012);
-    ball.vx += Math.sin(tiltX) * out * TILT_K + (Math.random() - 0.5) * 2 * jitter;
-    ball.vy += Math.sin(tiltY) * out * TILT_K + (Math.random() - 0.5) * 2 * jitter;
-    ball.vx *= 0.85; // a little spin-free damping so it stays controllable
-    ball.vy *= 0.85;
-    lateUntil = 0;
-    deadCount = 0;
     const sweet = dist < SWEET_R;
     const pts = sweet ? 2 : 1;
     score += pts;
@@ -437,47 +401,45 @@ export const mount: MountFn = (root, { slug, signal }) => {
     scoreEl.classList.remove('is-pop');
     void scoreEl.offsetWidth;
     scoreEl.classList.add('is-pop');
-    const strength = Math.min(1, vHit / 1.6);
-    sound?.tok(strength, { sweet, streak });
+    sound?.tok(strength, { dead: !pushed && res.approach < 1.2, sweet, streak });
     hapticTick();
     flashT = now;
-    ripples.push({ x: ball.x, y: ball.y, t0: now, s: 0.6 + strength });
-    pops.push({ text: sweet ? '+2 Sweet' : '+1', x: ball.x, y: ball.y, t0: now, tone: sweet ? 'sweet' : 'good' });
-    setStatus(sweet ? `Sweet spot × ${streak}` : 'Nice. Hit the middle for 2');
+    pops.push({ text: sweet ? '+2 Sweet' : '+1', x: rel[0], y: rel[1], t0: now, tone: sweet ? 'sweet' : pushed ? 'good' : 'dead' });
+    if (sweet) setStatus(`Centre ring × ${streak}`);
+    else if (!pushed && apex < 0.08) setStatus('Getting low. Push up as it lands');
+    else setStatus(pushed ? 'Nice push' : 'Bounce');
   };
 
   const step = (dt: number, now: number) => {
-    if (state === 'playing') {
-      ball.vh -= G * dt;
-      ball.h += ball.vh * dt;
-      ball.x += ball.vx * dt;
-      ball.y += ball.vy * dt;
-      if (ball.h <= 0 && ball.vh < 0) onContact(now);
-      else if (lateUntil > now && ball.vh > 0 && vpNow(now) > HIT_SPEED) {
-        // Late swing just after a dead bounce: rescue it as a hit.
-        const vHit = vpNow(now);
-        lateUntil = 0;
-        streak = 0;
-        hit(now, ball.vh / E_DEAD, vHit, Math.hypot(ball.x, ball.y));
-      }
-    } else if (state === 'falling') {
-      ball.vh -= G * dt;
-      ball.h += ball.vh * dt;
-      ball.x += ball.vx * dt;
-      ball.y += ball.vy * dt;
-      if (!fallOff && ball.h < 0) {
-        // Dribbles to a stop on the paddle.
-        ball.h = 0;
-        ball.vh = Math.abs(ball.vh) * 0.45;
-        ball.vx *= 0.9;
-        ball.vy *= 0.9;
-      }
-      if (now - fallT > 900) gameOver(overReason);
+    if (state !== 'playing' && state !== 'falling') return;
+    stepBall(ball, dt);
+    rel = mulT(tracker.R, sub(ball.p, tracker.posAt(now)));
+    if (state !== 'playing') return;
+    const [sx, sy] = toScr(rel[0], rel[1]);
+    const inside = Math.abs(sx) <= halfW() + EDGE && Math.abs(sy) <= halfH() + EDGE;
+    if (inside && rel[2] < BALL_R && lastRelZ > -BALL_R * 0.5) contact(now);
+    else if (rel[2] < -BALL_R) {
+      endSoon('Missed the paddle', true);
+      sound?.drop();
+      setStatus('It fell past the edge');
     }
+    rel = mulT(tracker.R, sub(ball.p, tracker.posAt(now)));
+    lastRelZ = rel[2];
+  };
+
+  /** Seconds until the ball reaches the paddle plane (rough: ignores drag and paddle motion). */
+  const timeToContact = () => {
+    const n = tracker.normal();
+    const vn = dot(sub(ball.v, tracker.vel), n);
+    const an = -G * n[2];
+    const gap = rel[2] - BALL_R;
+    // gap + vn t + ½ an t² = 0
+    const d = vn * vn - 2 * an * gap;
+    if (d < 0 || an >= 0) return Infinity;
+    return (-vn - Math.sqrt(d)) / an;
   };
 
   // ---------- rendering ----------
-  let W = 0, H = 0, dpr = 1;
   const resize = () => {
     const r = canvas.getBoundingClientRect();
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -490,59 +452,70 @@ export const mount: MountFn = (root, { slug, signal }) => {
   ro.observe(canvas);
   resize();
 
+  // Pimpled rubber texture, built once.
+  const tex = document.createElement('canvas');
+  tex.width = tex.height = 14;
+  {
+    const t = tex.getContext('2d')!;
+    t.fillStyle = 'rgba(0,0,0,0.12)';
+    t.beginPath();
+    t.arc(7, 7, 2.2, 0, Math.PI * 2);
+    t.fill();
+    t.fillStyle = 'rgba(255,255,255,0.06)';
+    t.beginPath();
+    t.arc(6.2, 6.2, 1, 0, Math.PI * 2);
+    t.fill();
+  }
+  const pattern = ctx2d.createPattern(tex, 'repeat');
+
   const draw = (now: number) => {
     const c = ctx2d;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, W, H);
-    // Fit the paddle between the HUD (top) and the control bar (bottom).
-    const top = 150;
-    const bottom = 76;
     const cx = W / 2;
-    const cy = top + (H - top - bottom) / 2;
-    const R = Math.max(60, Math.min(W * 0.46, (H - top - bottom) / 2 - 10));
-    const k = R / PADDLE_R; // px per metre on the paddle face
+    const cy = H / 2;
+    const P = PX_PER_M;
+    const project = (x: number, y: number, z: number): [number, number, number] => {
+      // True perspective would make a high ball fill the screen; cap the growth so the paddle stays readable.
+      const f = EYE / (EYE - Math.max(-0.05, Math.min(0.1, z)));
+      const [sx, sy] = toScr(x * f, y * f);
+      return [cx + sx * P, cy + sy * P, f];
+    };
 
-    // table / floor
-    const bg = c.createRadialGradient(cx, cy, R * 0.2, cx, cy, Math.max(W, H) * 0.8);
-    bg.addColorStop(0, '#1d3b5a');
-    bg.addColorStop(1, '#0a1220');
-    c.fillStyle = bg;
+    // The paddle: the whole canvas. Lit from above, brighter on the side that's tilted up.
+    const up = mulT(tracker.R, [0, 0, 1]);
+    const [hx, hy] = toScr(up[0], up[1]);
+    const lx = cx + hx * W * 1.2;
+    const ly = cy + hy * H * 1.2;
+    const lit = c.createRadialGradient(lx, ly, 0, cx, cy, Math.hypot(W, H) * 0.8);
+    lit.addColorStop(0, '#f2544a');
+    lit.addColorStop(0.6, '#c92a24');
+    lit.addColorStop(1, '#7d1310');
+    c.fillStyle = lit;
     c.fillRect(0, 0, W, H);
+    if (pattern) {
+      c.fillStyle = pattern;
+      c.fillRect(0, 0, W, H);
+    }
+    c.strokeStyle = 'rgba(214,160,100,0.85)'; // the edge of the paddle is the edge of the screen
+    c.lineWidth = 4;
+    c.strokeRect(2, 2, W - 4, H - 4);
 
-    // paddle: wooden rim + red rubber, shaded by tilt (light from the high side)
-    const lx = cx - Math.sin(tiltX) * R * 1.6;
-    const ly = cy - Math.sin(tiltY) * R * 1.6;
+    // centre ring (double points)
+    const [ox, oy] = project(0, 0, 0);
     c.beginPath();
-    c.arc(cx, cy, R + 7, 0, Math.PI * 2);
-    c.fillStyle = '#c8935a';
-    c.fill();
-    const rubber = c.createRadialGradient(lx, ly, R * 0.1, cx, cy, R * 1.3);
-    rubber.addColorStop(0, '#ff6a5c');
-    rubber.addColorStop(0.55, '#d8302a');
-    rubber.addColorStop(1, '#8e1612');
-    c.beginPath();
-    c.arc(cx, cy, R, 0, Math.PI * 2);
-    c.fillStyle = rubber;
-    c.fill();
-    // sweet spot
-    c.beginPath();
-    c.arc(cx, cy, SWEET_R * k, 0, Math.PI * 2);
-    c.strokeStyle = 'rgba(255,255,255,0.22)';
-    c.setLineDash([4, 6]);
+    c.arc(ox, oy, SWEET_R * P, 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(255,255,255,0.28)';
+    c.setLineDash([5, 7]);
     c.lineWidth = 2;
     c.stroke();
     c.setLineDash([]);
 
-    // hit flash
     const fa = reduced.matches ? 0 : Math.max(0, 1 - (now - flashT) / 160);
     if (fa > 0) {
-      c.beginPath();
-      c.arc(cx, cy, R, 0, Math.PI * 2);
-      c.fillStyle = `rgba(255,240,220,${0.18 * fa})`;
-      c.fill();
+      c.fillStyle = `rgba(255,240,220,${0.14 * fa})`;
+      c.fillRect(0, 0, W, H);
     }
 
-    // ripples
     for (let i = ripples.length - 1; i >= 0; i--) {
       const r = ripples[i];
       const t = (now - r.t0) / 450;
@@ -550,61 +523,100 @@ export const mount: MountFn = (root, { slug, signal }) => {
         ripples.splice(i, 1);
         continue;
       }
+      const [x, y] = project(r.x, r.y, 0);
       c.beginPath();
-      c.arc(cx + r.x * k, cy + r.y * k, BALL_R * k * (1 + t * 3 * r.s), 0, Math.PI * 2);
-      c.strokeStyle = `rgba(255,255,255,${0.5 * (1 - t)})`;
+      c.arc(x, y, BALL_R * P * (0.6 + t * 1.6 * r.s), 0, Math.PI * 2);
+      c.strokeStyle = `rgba(255,255,255,${0.45 * (1 - t)})`;
       c.lineWidth = 3 * (1 - t) + 1;
       c.stroke();
     }
 
-    if (state !== 'intro') {
-      const bx = cx + ball.x * k;
-      const by = cy + ball.y * k;
-      const br = BALL_R * k;
-      const hh = Math.max(0, ball.h);
-      const onPaddle = Math.hypot(ball.x, ball.y) < PADDLE_R + BALL_R;
-      const falling = state === 'falling' && fallOff;
-
-      // shadow on the paddle (only while over it)
-      if (onPaddle && !falling) {
+    if (state !== 'intro' && !lostBelow) {
+      // Shadow: straight down (world) onto the paddle's surface.
+      const down = mulT(tracker.R, [0, 0, -1]);
+      if (down[2] < -0.3 && rel[2] > -BALL_R) {
+        const t = rel[2] / -down[2];
+        const [x, y] = project(rel[0] + t * down[0], rel[1] + t * down[1], 0);
+        const r = BALL_R * P * (0.9 + rel[2] * 1.2);
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        const a = 0.5 / (1 + rel[2] * 8);
+        g.addColorStop(0, `rgba(40,0,0,${a})`);
+        g.addColorStop(1, 'rgba(40,0,0,0)');
+        c.fillStyle = g;
         c.beginPath();
-        c.ellipse(bx, by, br * (1 + hh * 0.9), br * (1 + hh * 0.9), 0, 0, Math.PI * 2);
-        c.fillStyle = `rgba(30,0,0,${0.5 / (1 + hh * 5)})`;
+        c.arc(x, y, r, 0, Math.PI * 2);
         c.fill();
       }
 
-      // approach ring: closes onto the shadow as contact nears
-      if (state === 'playing' && ball.vh < 0) {
+      const [bx, by, f] = project(rel[0], rel[1], rel[2]);
+      const br = BALL_R * P * f;
+
+      // approach ring: closes onto the ball as it reaches the paddle
+      if (state === 'playing') {
         const ttc = timeToContact();
-        if (ttc < 0.45) {
-          const p = ttc / 0.45;
+        if (ttc < 0.35) {
+          const q = ttc / 0.35;
           c.beginPath();
-          c.arc(bx, by, br * (1.05 + p * 2.6), 0, Math.PI * 2);
-          c.strokeStyle = `rgba(255,236,170,${0.85 * (1 - p)})`;
+          c.arc(bx, by, br * (1.04 + q * 1.4), 0, Math.PI * 2);
+          c.strokeStyle = `rgba(255,236,170,${0.9 * (1 - q)})`;
           c.lineWidth = 3;
           c.stroke();
         }
       }
 
-      // ball: higher = closer to your eye = bigger and further from centre
-      const persp = 1 + hh * 0.55;
-      const fallScale = falling ? Math.max(0.05, 1 + ball.h * 1.2) : 1;
-      const px = cx + ball.x * k * persp;
-      const py = cy + ball.y * k * persp;
-      const pr = br * 0.9 * (1 + hh * 0.9) * fallScale;
-      const alpha = falling ? Math.max(0, 1 - (now - fallT) / 900) : 1;
-      const g = c.createRadialGradient(px - pr * 0.35, py - pr * 0.4, pr * 0.1, px, py, pr);
+      // the ball (a touch see-through when it's high, so the shadow shows)
+      const alpha = 1 - Math.min(0.4, Math.max(0, rel[2] - 0.03) * 2.5);
+      const g = c.createRadialGradient(bx - br * 0.35, by - br * 0.4, br * 0.1, bx, by, br);
       g.addColorStop(0, `rgba(255,255,255,${alpha})`);
       g.addColorStop(0.7, `rgba(255,244,228,${alpha})`);
-      g.addColorStop(1, `rgba(214,196,170,${alpha})`);
-      c.beginPath();
-      c.arc(px, py, pr, 0, Math.PI * 2);
+      g.addColorStop(1, `rgba(206,188,160,${alpha})`);
       c.fillStyle = g;
+      c.beginPath();
+      c.arc(bx, by, br, 0, Math.PI * 2);
       c.fill();
+
+      // Off the screen: an edge marker pointing at it, with how far out it is.
+      const pad = 30;
+      const hide = br * 0.5; // only once the ball is mostly off-screen
+      if (bx < -hide || bx > W + hide || by < -hide || by > H + hide) {
+        const mx = Math.max(pad, Math.min(W - pad, bx));
+        const my = Math.max(pad, Math.min(H - pad, by));
+        const ang = Math.atan2(by - my, bx - mx);
+        const [sx, sy] = toScr(rel[0], rel[1]);
+        const out = Math.hypot(Math.max(0, Math.abs(sx) - halfW()), Math.max(0, Math.abs(sy) - halfH()));
+        const falling = dot(ball.v, [0, 0, 1]) < 0;
+        const col = falling ? '255,196,120' : '255,255,255';
+        const mr = 12 + Math.min(10, Math.max(0, rel[2]) * 30);
+        c.beginPath();
+        c.arc(mx, my, mr, 0, Math.PI * 2);
+        c.fillStyle = `rgba(20,8,8,0.55)`;
+        c.fill();
+        c.strokeStyle = `rgba(${col},0.95)`;
+        c.lineWidth = 2.5;
+        c.stroke();
+        c.save();
+        c.translate(mx, my);
+        c.rotate(ang);
+        c.beginPath();
+        c.moveTo(mr + 12, 0);
+        c.lineTo(mr + 2, -7);
+        c.lineTo(mr + 2, 7);
+        c.closePath();
+        c.fillStyle = `rgba(${col},0.95)`;
+        c.fill();
+        c.restore();
+        c.font = '700 13px ui-sans-serif, system-ui, -apple-system, sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillStyle = `rgb(${col})`;
+        c.fillText(`${Math.max(1, Math.round(out * 100))}`, mx, my - 1);
+        c.font = '600 9px ui-sans-serif, system-ui, -apple-system, sans-serif';
+        c.fillText('cm', mx, my + mr + 9);
+      }
     }
 
-    // score pops
     c.textAlign = 'center';
+    c.textBaseline = 'alphabetic';
     c.font = '700 20px ui-sans-serif, system-ui, -apple-system, sans-serif';
     for (let i = pops.length - 1; i >= 0; i--) {
       const p = pops[i];
@@ -613,10 +625,11 @@ export const mount: MountFn = (root, { slug, signal }) => {
         pops.splice(i, 1);
         continue;
       }
+      const [x, y] = project(p.x, p.y, 0);
       const rise = reduced.matches ? 0 : t * 36;
       c.fillStyle =
-        p.tone === 'sweet' ? `rgba(255,226,120,${1 - t})` : p.tone === 'dead' ? `rgba(200,220,255,${1 - t})` : `rgba(255,255,255,${1 - t})`;
-      c.fillText(p.text, cx + p.x * k, cy + p.y * k - BALL_R * k * 2.2 - rise);
+        p.tone === 'sweet' ? `rgba(255,226,120,${1 - t})` : p.tone === 'dead' ? `rgba(220,230,255,${1 - t})` : `rgba(255,255,255,${1 - t})`;
+      c.fillText(p.text, x, y - BALL_R * P * 1.3 - rise);
     }
   };
 
@@ -627,10 +640,15 @@ export const mount: MountFn = (root, { slug, signal }) => {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    if (input === 'touch') record(now);
-    // Fixed small substeps so contact timing doesn't depend on frame rate.
-    const n = Math.ceil(dt / 0.004);
+    if (input === 'touch') {
+      const age = (now - tapT) / 1000;
+      const vz = age >= 0 && age < 0.16 ? 1.3 * (1 - age / 0.16) : 0;
+      tracker.manual(tapTiltY, tapTiltX, vz, now);
+    }
+    // Small fixed substeps so fast balls can't skip through the paddle.
+    const n = Math.ceil(dt / 0.002);
     for (let i = 0; i < n; i++) step(dt / n, now - (dt * 1000 * (n - 1 - i)) / n);
+    if (state === 'falling' && now >= overAt) gameOver(overReason);
     draw(now);
   };
   raf = requestAnimationFrame(frame);

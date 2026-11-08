@@ -71,22 +71,6 @@ export function toScreen(dx: number, dy: number): [number, number] {
   return [dx * c + dy * s, -dx * s + dy * c];
 }
 
-/**
- * Upward (against gravity) linear acceleration in m/s², whatever way the phone
- * is held. Sign-safe: some platforms report both vectors inverted, which cancels
- * out in the dot product.
- */
-export function upAccel(e: DeviceMotionEvent): number | null {
-  const a = e.acceleration;
-  const g = e.accelerationIncludingGravity;
-  if (!a || !g || a.x == null || g.x == null) return null;
-  const ax = a.x ?? 0, ay = a.y ?? 0, az = a.z ?? 0;
-  const ux = (g.x ?? 0) - ax, uy = (g.y ?? 0) - ay, uz = (g.z ?? 0) - az; // gravity-reaction vector ("up")
-  const len = Math.hypot(ux, uy, uz);
-  if (len < 1) return null;
-  return (ax * ux + ay * uy + az * uz) / len;
-}
-
 /** Keep the screen awake while the signal is live (best effort; iOS 16.4+). */
 export async function keepAwake(signal: AbortSignal): Promise<void> {
   const wl = (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } })
