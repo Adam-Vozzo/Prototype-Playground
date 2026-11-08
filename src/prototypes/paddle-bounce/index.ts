@@ -11,6 +11,7 @@ import {
   BALLS,
   bounce,
   dot,
+  IDENTITY,
   mulT,
   PaddleTracker,
   PX_PER_M,
@@ -32,11 +33,20 @@ const PUSH = 0.12; // m/s of paddle speed at contact that counts as a push
 const EYE = 0.45; // m from your eye to the screen, for perspective
 const SPAWN_H = 0.3; // m above the paddle where each ball starts
 const TAP_TILT = 12; // degrees of tilt in the touch fallback
+// Timing mode: the ball only moves up and down; what matters is when (and how hard) you push.
+const EARLY_MS = 150; // a push that peaked up to this long before the landing still counts ("Early")
+const PERFECT_MS = 60; // a push peaking within this of the landing is "Perfect"
+const LATE_MS = 130; // a push this soon after a dead bounce rescues it ("Late")
+const V_MAX = 4; // m/s cap on how hard a push can launch the ball
 
 type State = 'intro' | 'playing' | 'paused' | 'falling' | 'over';
 type Input = 'motion' | 'touch';
 
+type Mode = 'timing' | 'free';
+
 interface Settings {
+  /** timing: ball stays centred, only vertical timing matters. free: tilt and move it in 3D. */
+  mode: Mode;
   ball: BallName;
   /** Tilt effect, 0–100 (%): how much of your tilt the paddle follows. */
   tilt: number;
@@ -46,7 +56,7 @@ interface Settings {
   deadband: number;
   calibrated: boolean;
 }
-const DEFAULTS: Settings = { ball: 'real', tilt: 50, level: { beta: 0, gamma: 0 }, bias: [0, 0, 0], deadband: 0.12, calibrated: false };
+const DEFAULTS: Settings = { mode: 'timing', ball: 'real', tilt: 50, level: { beta: 0, gamma: 0 }, bias: [0, 0, 0], deadband: 0.12, calibrated: false };
 const wrap180 = (d: number) => ((((d + 180) % 360) + 360) % 360) - 180;
 
 export const mount: MountFn = (root, { slug, signal }) => {
@@ -61,6 +71,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
     /* defaults */
   }
   if (!(settings.ball in BALLS)) settings.ball = 'real';
+  if (settings.mode !== 'free') settings.mode = 'timing';
+  const timing = () => settings.mode === 'timing';
   const saveSettings = () => localStorage.setItem(settingsKey, JSON.stringify(settings));
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -125,6 +137,31 @@ export const mount: MountFn = (root, { slug, signal }) => {
   }
   ballHint.textContent = ballHints[settings.ball];
   ballSeg.append(ballRow, ballHint);
+  const modeSeg = h('fieldset', { class: 'pb-seg' }, h('legend', {}, 'Movement'));
+  const modeRow = h('div', { class: 'pb-seg-row' });
+  const modeHint = h('p', { class: 'pb-hint' });
+  const modeHints: Record<Mode, string> = {
+    timing: 'The ball stays in the middle. Just time your push as it lands.',
+    free: 'Real 3D: tilting and moving the phone steers the ball, and it can go off the edge.',
+  };
+  for (const [m, label] of [['timing', 'Timing only'], ['free', 'Free (tilt & move)']] as [Mode, string][]) {
+    const input = h('input', { type: 'radio', name: `${slug}-mode`, value: m }) as HTMLInputElement;
+    input.checked = settings.mode === m;
+    input.addEventListener(
+      'change',
+      () => {
+        if (!input.checked) return;
+        settings.mode = m;
+        saveSettings();
+        syncMode();
+        calibMsg.textContent = m === 'timing' ? 'Timing only' : 'Free movement';
+        if (state === 'paused' || state === 'playing') resetBall();
+      },
+      { signal },
+    );
+    modeRow.append(h('label', { class: 'pb-seg-opt' }, input, h('span', {}, label)));
+  }
+  modeSeg.append(modeRow, modeHint);
   const tiltInput = h('input', { type: 'range', min: 0, max: 100, step: 5, value: settings.tilt, id: `${slug}-tilt` }) as HTMLInputElement;
   const tiltOut = h('output', { class: 'pb-range-val', for: `${slug}-tilt` }, `${settings.tilt}%`);
   const tiltRow = h(
@@ -151,12 +188,19 @@ export const mount: MountFn = (root, { slug, signal }) => {
     calibMsg,
     h('div', { class: 'pb-card-actions' }, setLevelBtn, resetLevelBtn),
     h('hr', { class: 'pb-rule' }),
+    modeSeg,
     ballSeg,
     tiltRow,
     tiltHint,
     h('div', { class: 'pb-card-actions' }, soundBtn, doneBtn),
   );
   calib.hidden = true;
+  /** Tilt only matters in free mode. */
+  const syncMode = () => {
+    modeHint.textContent = modeHints[settings.mode];
+    tiltRow.hidden = tiltHint.hidden = timing();
+  };
+  syncMode();
   const overlay = h('div', { class: 'pb-overlay' }, card, calib);
 
   const wrap = h(
@@ -193,6 +237,10 @@ export const mount: MountFn = (root, { slug, signal }) => {
   const ball: Ball = { p: [0, 0, SPAWN_H], v: [0, 0, 0] };
   let lastRelZ = SPAWN_H;
   let rel: V3 = [0, 0, SPAWN_H]; // ball centre in the paddle's frame (x right, y up the screen, z out of it)
+
+  // timing mode: recent upward paddle speeds, and a pending dead bounce that a late push can rescue
+  const hist: { t: number; v: number }[] = [];
+  let late: { until: number; base: number; apex: number } | null = null;
 
   // touch fallback
   let tapT = -1e9;
@@ -268,8 +316,9 @@ export const mount: MountFn = (root, { slug, signal }) => {
     const now = performance.now();
     tracker.reset(now);
     const jitter = () => (Math.random() - 0.5) * 0.008;
-    ball.p = add(tracker.posAt(now), [jitter(), jitter(), SPAWN_H]);
+    ball.p = timing() ? [0, 0, SPAWN_H] : add(tracker.posAt(now), [jitter(), jitter(), SPAWN_H]);
     ball.v = [0, 0, 0];
+    late = null;
     lastRelZ = SPAWN_H;
     lostBelow = false;
   };
@@ -284,7 +333,15 @@ export const mount: MountFn = (root, { slug, signal }) => {
     overlay.hidden = true;
     modeChip.hidden = false;
     pauseBtn.disabled = false;
-    setStatus(input === 'motion' ? 'Keep it over the screen and push up as it lands' : 'Tap on the ball as it lands');
+    setStatus(
+      timing()
+        ? input === 'motion'
+          ? 'Push up as the ring closes on the ball'
+          : 'Tap as the ring closes on the ball'
+        : input === 'motion'
+          ? 'Keep it over the screen and push up as it lands'
+          : 'Tap on the ball as it lands',
+    );
   };
 
   const showCard = (title: string, body: (Node | string)[], primary: string, primaryIcon = Play, showTap = false) => {
@@ -308,16 +365,26 @@ export const mount: MountFn = (root, { slug, signal }) => {
         h(
           'ol',
           { class: 'pb-steps' },
-          h('li', {}, icon(Smartphone, 16), h('span', {}, 'Your phone is the paddle: the whole screen, at real size. Hold it flat, screen up, and grip it firmly.')),
-          h('li', {}, h('span', { class: 'pb-dot' }), h('span', {}, 'The ball hangs in the room above it. Move the phone under it and the ball moves on screen just as it would in real life. Off the edge, an arrow shows where it went.')),
-          h('li', {}, icon(Hand, 16), h('span', {}, 'Push up gently as it lands to keep it bouncing. Tilt to send it back to the middle. Bounces in the centre ring score double.')),
+          ...(timing()
+            ? [
+                h('li', {}, icon(Smartphone, 16), h('span', {}, 'Your phone is the paddle. Hold it flat, screen up, and grip it firmly.')),
+                h('li', {}, h('span', { class: 'pb-dot' }), h('span', {}, 'The ball bounces straight up and down. A ring closes in on it as it lands.')),
+                h('li', {}, icon(Hand, 16), h('span', {}, 'Push the phone up right as it lands. On the beat scores 2 (Perfect), a little early or late scores 1. Hold still and it dies away.')),
+              ]
+            : [
+                h('li', {}, icon(Smartphone, 16), h('span', {}, 'Your phone is the paddle: the whole screen, at real size. Hold it flat, screen up, and grip it firmly.')),
+                h('li', {}, h('span', { class: 'pb-dot' }), h('span', {}, 'The ball hangs in the room above it. Move the phone under it and the ball moves on screen just as it would in real life. Off the edge, an arrow shows where it went.')),
+                h('li', {}, icon(Hand, 16), h('span', {}, 'Push up gently as it lands to keep it bouncing. Tilt to send it back to the middle. Bounces in the centre ring score double.')),
+              ]),
         ),
         h(
           'p',
           { class: 'pb-note' },
-          settings.calibrated
-            ? 'Turn on Portrait Orientation Lock so the screen doesn’t rotate. Unfold your phone for a bigger paddle.'
-            : 'First time? Calibrate sets the tilt you naturally hold as level, and lets you pick a slower, floatier ball. Turn on Portrait Orientation Lock too.',
+          timing()
+            ? 'Want it slower? Calibrate → Ball → Floaty. For full 3D tilt-and-move physics, Calibrate → Movement → Free.'
+            : settings.calibrated
+              ? 'Turn on Portrait Orientation Lock so the screen doesn’t rotate. Unfold your phone for a bigger paddle.'
+              : 'First time? Calibrate sets the tilt you naturally hold as level, and lets you pick a slower, floatier ball. Turn on Portrait Orientation Lock too.',
         ),
       ],
       'Start',
@@ -629,9 +696,96 @@ export const mount: MountFn = (root, { slug, signal }) => {
     else setStatus(pushed ? 'Nice push' : 'Bounce');
   };
 
+  // ----- timing mode -----
+  const award = (how: 'perfect' | 'early' | 'late', strength: number, now: number) => {
+    const perfect = how === 'perfect';
+    score += perfect ? 2 : 1;
+    streak = perfect ? streak + 1 : 0;
+    scoreEl.textContent = String(score);
+    scoreEl.classList.remove('is-pop');
+    void scoreEl.offsetWidth;
+    scoreEl.classList.add('is-pop');
+    sound?.tok(strength, { sweet: perfect, streak });
+    hapticTick();
+    flashT = now;
+    ripples.push({ x: 0, y: 0, t0: now, s: 0.5 + strength });
+    pops.push({ text: perfect ? '+2 Perfect' : how === 'early' ? '+1 Early' : '+1 Late', x: 0, y: 0, t0: now, tone: perfect ? 'sweet' : 'good' });
+    setStatus(perfect ? `Perfect × ${streak}` : how === 'early' ? 'A little early' : 'A little late');
+  };
+
+  const contactTiming = (now: number) => {
+    const k = kind();
+    if (late) {
+      // The last dead bounce landed again before its rescue window closed: settle it now.
+      const apex = late.apex;
+      late = null;
+      if (apex < DEAD_APEX) {
+        sound?.tok(0.15, { dead: true });
+        endSoon('The ball died out', false, 600);
+        setStatus('It stopped bouncing. Push up as it lands');
+        return;
+      }
+    }
+    const vin = -ball.v[2];
+    // Hardest upward paddle speed in the last moment: a push that peaked just before still counts.
+    let peak = tracker.vel[2];
+    let peakT = now;
+    for (const sample of hist) {
+      if (sample.t >= now - EARLY_MS && sample.v > peak) {
+        peak = sample.v;
+        peakT = sample.t;
+      }
+    }
+    const pushed = peak > PUSH;
+    // A moving paddle: v_out = e·v_in + (1 + e)·v_paddle.
+    const vout = Math.min(V_MAX, k.e * vin + (pushed ? (1 + k.e) * peak : 0));
+    ball.p = [0, 0, BALL_R];
+    ball.v = [0, 0, vout];
+    if (pushed) {
+      late = null;
+      award(now - peakT > PERFECT_MS ? 'early' : 'perfect', Math.min(1, vin / 3 + peak / 1.5), now);
+    } else {
+      sound?.tok(0.3, { dead: true });
+      ripples.push({ x: 0, y: 0, t0: now, s: 0.3 });
+      late = { until: now + LATE_MS, base: Math.max(0, tracker.vel[2]), apex: (vout * vout) / (2 * k.g) };
+    }
+  };
+
+  const stepTiming = (now: number) => {
+    const k = kind();
+    if (late) {
+      const v = tracker.vel[2];
+      if (now <= late.until && v > PUSH && v > late.base + 0.05 && ball.v[2] > 0) {
+        // Late push: the paddle catches the ball just after it bounced.
+        ball.v[2] = Math.min(V_MAX, ball.v[2] + (1 + k.e) * v);
+        late = null;
+        award('late', Math.min(1, v / 1.5), now);
+      } else if (now > late.until) {
+        const apex = late.apex;
+        late = null;
+        streak = 0;
+        if (apex < DEAD_APEX) {
+          endSoon('The ball died out', false, 600);
+          setStatus('It stopped bouncing. Push up as it lands');
+          return;
+        }
+        pops.push({ text: 'Too still', x: 0, y: 0, t0: now, tone: 'dead' });
+        setStatus(apex < 0.08 ? 'Getting low. Push up as it lands' : 'Push up as it lands to score');
+      }
+    }
+    if (ball.p[2] < BALL_R && ball.v[2] < 0) contactTiming(now);
+    rel = [0, 0, ball.p[2]];
+  };
+
   const step = (dt: number, now: number) => {
     if (state !== 'playing' && state !== 'falling') return;
     stepBall(ball, dt, kind());
+    if (timing()) {
+      if (state === 'falling') ball.p[2] = Math.max(BALL_R, ball.p[2]);
+      rel = [0, 0, ball.p[2]];
+      if (state === 'playing') stepTiming(now);
+      return;
+    }
     rel = mulT(tracker.R, sub(ball.p, tracker.posAt(now)));
     if (state !== 'playing') return;
     const [sx, sy] = toScr(rel[0], rel[1]);
@@ -648,8 +802,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
   /** Seconds until the ball reaches the paddle plane (rough: ignores drag and paddle motion). */
   const timeToContact = () => {
-    const n = tracker.normal();
-    const vn = dot(sub(ball.v, tracker.vel), n);
+    const n: V3 = timing() ? [0, 0, 1] : tracker.normal();
+    const vn = timing() ? ball.v[2] : dot(sub(ball.v, tracker.vel), n);
     const an = -kind().g * n[2];
     const gap = rel[2] - BALL_R;
     // gap + vn t + ½ an t² = 0
@@ -701,7 +855,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
     };
 
     // The paddle: the whole canvas. Lit from above, brighter on the side that's tilted up.
-    const up = mulT(tracker.R, [0, 0, 1]);
+    const Rv = timing() ? IDENTITY : tracker.R; // timing mode: the paddle is drawn flat
+    const up = mulT(Rv, [0, 0, 1]);
     const [hx, hy] = toScr(up[0], up[1]);
     const lx = cx + hx * W * 1.2;
     const ly = cy + hy * H * 1.2;
@@ -719,15 +874,17 @@ export const mount: MountFn = (root, { slug, signal }) => {
     c.lineWidth = 4;
     c.strokeRect(2, 2, W - 4, H - 4);
 
-    // centre ring (double points)
-    const [ox, oy] = project(0, 0, 0);
-    c.beginPath();
-    c.arc(ox, oy, SWEET_R * P, 0, Math.PI * 2);
-    c.strokeStyle = 'rgba(255,255,255,0.28)';
-    c.setLineDash([5, 7]);
-    c.lineWidth = 2;
-    c.stroke();
-    c.setLineDash([]);
+    // centre ring (double points, free mode only)
+    if (!timing()) {
+      const [ox, oy] = project(0, 0, 0);
+      c.beginPath();
+      c.arc(ox, oy, SWEET_R * P, 0, Math.PI * 2);
+      c.strokeStyle = 'rgba(255,255,255,0.28)';
+      c.setLineDash([5, 7]);
+      c.lineWidth = 2;
+      c.stroke();
+      c.setLineDash([]);
+    }
 
     const fa = reduced.matches ? 0 : Math.max(0, 1 - (now - flashT) / 160);
     if (fa > 0) {
@@ -752,7 +909,7 @@ export const mount: MountFn = (root, { slug, signal }) => {
 
     if (state !== 'intro' && !lostBelow) {
       // Shadow: straight down (world) onto the paddle's surface.
-      const down = mulT(tracker.R, [0, 0, -1]);
+      const down = mulT(Rv, [0, 0, -1]);
       if (down[2] < -0.3 && rel[2] > -BALL_R) {
         const t = rel[2] / -down[2];
         const [x, y] = project(rel[0] + t * down[0], rel[1] + t * down[1], 0);
@@ -907,6 +1064,8 @@ export const mount: MountFn = (root, { slug, signal }) => {
       const vz = age >= 0 && age < 0.16 ? 1.3 * (1 - age / 0.16) : 0;
       tracker.manual(tapTiltY, tapTiltX, vz, now);
     }
+    hist.push({ t: now, v: tracker.vel[2] });
+    while (hist.length && hist[0].t < now - 400) hist.shift();
     // Small fixed substeps so fast balls can't skip through the paddle.
     const n = Math.ceil(dt / 0.002);
     for (let i = 0; i < n; i++) step(dt / n, now - (dt * 1000 * (n - 1 - i)) / n);

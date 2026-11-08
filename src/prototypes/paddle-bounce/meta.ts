@@ -3,7 +3,7 @@ import type { PrototypeMeta } from '../../types';
 // Keep this file tiny – it's bundled into the library index.
 export default {
   title: 'Paddle Bounce',
-  description: 'Your phone is the paddle. Hold it flat and flick it up as the ball meets its shadow to keep it bouncing. Tilt to steer.',
+  description: 'Your phone is the paddle. Push it up just as the ball lands to keep it bouncing: Perfect timing scores double.',
   icon: '🏓',
   tags: ['game', 'motion', 'audio'],
   accent: 'linear-gradient(90deg, #ff5a4f, #ffb347)',
