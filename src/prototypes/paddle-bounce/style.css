@@ -146,3 +146,40 @@
 .pb-final-num { font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pb-card-actions { display: flex; flex-wrap: wrap; gap: var(--gap-tap); margin-top: 16px; }
 .pb-card-actions .pb-btn { flex: 1 1 auto; }
+
+/* ---------- calibration & settings panel ---------- */
+.pb-level-wrap { display: grid; justify-items: center; gap: 6px; margin: 0 0 12px; }
+.pb-level { width: 168px; height: 168px; }
+.pb-level-read { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #dfe6f4; min-height: 1.4em; }
+.pb-calib-msg { min-height: 1.45em; color: #ffe7b0; font-weight: 600; }
+.pb-rule { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.12); margin: 16px 0 12px; }
+.pb-hint { margin: 6px 0 0; font-size: 13px; color: #a9b3c7; }
+
+.pb-seg { margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
+.pb-seg legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #a9b3c7; }
+.pb-seg-row { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
+.pb-seg-opt { flex: 1 1 0; position: relative; display: flex; }
+.pb-seg-opt input { position: absolute; inset: 0; opacity: 0; margin: 0; pointer-events: none; }
+.pb-seg-opt span {
+  flex: 1;
+  min-height: var(--tap);
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+@media (hover: hover) { .pb-seg-opt:hover span { background: rgba(255, 255, 255, 0.08); } }
+.pb-seg-opt:active span { transform: scale(0.96); }
+.pb-seg-opt input:checked + span { background: rgba(255, 150, 80, 0.28); border-color: rgba(255, 190, 130, 0.7); color: #fff; }
+.pb-seg-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.pb-range { display: flex; align-items: center; gap: 10px; min-height: var(--tap); }
+.pb-range label { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.pb-range input { flex: 1; min-width: 60px; height: var(--tap); margin: 0; accent-color: #ff9a5c; cursor: pointer; }
+.pb-range-val { min-width: 4ch; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.pb-calib .pb-card-actions { margin-top: 12px; }
+@media (max-height: 640px) { .pb-level { width: 120px; height: 120px; } }
