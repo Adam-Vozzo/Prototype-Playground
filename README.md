@@ -11,6 +11,8 @@ deployed by `.github/workflows/deploy.yml`.
 | Prototype | What it is |
 | --- | --- |
 | 💬 **Wiki Chat** (`#/wiki-chat`) | Paste a Wikipedia URL and a hyperactive stream chat reads the article to you, one sentence per message, voiced by a single `WikiReader` broadcaster. Everything sits in thumb reach at the bottom: **New topic** (next to the chat box) expands a picker upward (what do you want to learn about today? · clear/paste · Random · suggestions), and the player dock has play/pause, next, seek and **Controls** (section, speed, chat activity, display switches, restart / Wikipedia). Chat uses **Northernlion’s channel emotes** (ICANT, Cereal…) plus the global **7TV, BetterTTV and FFZ** sets (`emotes.ts`, fetched in the browser, cached a day, toggle in Controls). Chat riffs on what it just read from ~1,300 reaction lines and templates (`reactions.ts`), and you can chat back. Deep-linkable: `#/wiki-chat?article=en:Octopus`. |
+| 🏓 **Paddle Bounce** (`#/paddle-bounce`) | Your phone is the paddle. Hold it flat and flick it up as the ball meets its shadow (an approach ring closes in) to keep it bouncing; tilt to steer it back to the centre, hit the sweet spot for double points. Upward paddle speed comes from the accelerometer, tilt from orientation; the “tok” is synthesised with Web Audio. No sensors? Tap to swing. |
+| ⚡ **Swing Synth** (`#/swing-synth`) | Hold the phone like a hilt and sweep arcs: how high you point picks the note (pentatonic or glide), swing speed opens the filter, speeds up a tremolo buzz and brings in a whoosh that peaks mid-arc (or with G-force, switchable). Three voices, a trail of where you swept, tip speed in km/h and a best-swing record. Drag on desktop. |
 | 🪴 **Glass Garden** (`#/glass-garden`) | A three.js garden under a frosted glass dome. Opens at night with fireflies and the wipe tool on: drag the glass to clear the frost, drag elsewhere to orbit. Lift the dome, toggle night and auto-rotate, adjust the frost. |
 
 ## Getting started
@@ -71,10 +73,15 @@ src/
   lib/dom.ts         tiny h() helper + useStyles()
   lib/icon.ts        icon() / setIcon() for Lucide icons
   lib/feedback.ts    setBusy() busy state for buttons
+  lib/sensors.ts     motion permission (iOS), sensor detection, wake lock
+  lib/audio.ts       Web Audio context (playback session) + noise buffer
+  lib/haptics.ts     best-effort haptic tick (iOS switch trick / vibrate)
   shell/             library page, prototype host chrome, global CSS
   prototypes/
     wiki-chat/       Wikipedia → stream-chat reader
     glass-garden/    three.js frosted-dome garden
+    paddle-bounce/   phone-as-paddle ball game (motion + Web Audio)
+    swing-synth/     motion-controlled energy-beam synth
 scripts/new-prototype.mjs
 ```
 
